@@ -1,138 +1,139 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  Search, 
-  Filter, 
   ChevronRight, 
-  Info, 
-  AlertTriangle, 
-  FileText, 
+  ArrowRight,
+  AlertCircle,
   CheckCircle2,
-  Terminal,
-  Grid
+  MinusCircle,
+  Filter
 } from 'lucide-react';
 import { RESUME_TEMPLATES } from '../constants';
-import { ResumeTemplate, TemplateCategory } from '../types';
+import { ResumeTemplate, AppView, TemplateField } from '../types';
 
-const TemplateCard: React.FC<{ template: ResumeTemplate; onSelect: () => void }> = ({ template, onSelect }) => {
+const FIELDS: TemplateField[] = [
+  'Software / Tech',
+  'Data / Analytics',
+  'Business / Management',
+  'Student / Fresher',
+  'General Professional'
+];
+
+interface FrameworkCardProps {
+  template: ResumeTemplate;
+  onSelect: (t: ResumeTemplate) => void;
+  isRecommended?: boolean;
+}
+
+const FrameworkCard: React.FC<FrameworkCardProps> = ({ template, onSelect, isRecommended }) => {
   return (
-    <div className="bg-[#16161E] rounded-[2.5rem] p-10 border border-[#1D1D26] hover:border-blue-500/30 transition-all group flex flex-col h-full shadow-xl">
-      <div className="flex justify-between items-start mb-8">
-        <div>
-          <h3 className="text-xl font-black text-white tracking-tighter leading-none mb-2">{template.role}</h3>
-          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{template.category} • {template.experienceLevel}</span>
-        </div>
-        <div className="w-8 h-8 rounded-full bg-[#0D0D12] border border-[#1D1D26] flex items-center justify-center text-gray-700 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600 transition-all">
-          <ChevronRight size={16} />
-        </div>
+    <div className={`bg-[#16161E] rounded-3xl p-10 border transition-all flex flex-col h-full shadow-2xl relative ${isRecommended ? 'border-blue-500 shadow-blue-500/5' : 'border-[#1D1D26] opacity-80 hover:opacity-100'}`}>
+      {isRecommended && (
+        <span className="absolute -top-3 left-10 bg-blue-600 text-white text-[9px] font-black uppercase tracking-[0.2em] px-5 py-1.5 rounded-full shadow-xl">Recommended</span>
+      )}
+      
+      <div className="mb-10">
+        <h3 className="text-xl font-black text-white tracking-tighter leading-tight mb-3">{template.name}</h3>
+        <p className="text-slate-500 text-xs font-medium leading-relaxed">{template.usedWhen}</p>
       </div>
 
-      <div className="space-y-6 flex-1">
-        <div className="space-y-2">
-          <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest flex items-center gap-2">
-            <Info size={12} /> Used When
-          </p>
-          <p className="text-gray-400 text-xs leading-relaxed font-medium">{template.usedWhen}</p>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-[10px] font-black text-blue-500/50 uppercase tracking-widest flex items-center gap-2">
-            <CheckCircle2 size={12} /> Screening Logic
-          </p>
-          <p className="text-gray-300 text-xs leading-relaxed font-bold">{template.screeningLogic}</p>
-        </div>
-
-        {template.riskNotes && (
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-amber-500/50 uppercase tracking-widest flex items-center gap-2">
-              <AlertTriangle size={12} /> Risk Notes
-            </p>
-            <p className="text-gray-500 text-[10px] leading-relaxed italic">{template.riskNotes}</p>
+      <div className="space-y-10 flex-1">
+        <div className="space-y-4">
+          <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em]">Section Order</p>
+          <div className="flex flex-wrap gap-2">
+            {template.sectionOrder.map((section, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-white">{section}</span>
+                {idx < template.sectionOrder.length - 1 && <ChevronRight size={12} className="text-slate-700" />}
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+
+        <div className="space-y-6">
+          <div className="space-y-3">
+             <p className="text-[10px] font-black text-blue-500/50 uppercase tracking-widest flex items-center gap-2">
+               <CheckCircle2 size={12} /> Notice First
+             </p>
+             <div className="space-y-2">
+               {template.recruiterScan.noticeFirst.map((item, i) => (
+                 <p key={i} className="text-slate-300 text-xs font-bold leading-none">• {item}</p>
+               ))}
+             </div>
+          </div>
+        </div>
+
+        <div className="p-6 bg-amber-500/5 border border-amber-500/10 rounded-2xl">
+           <p className="text-[10px] font-black text-amber-500/50 uppercase tracking-[0.3em] flex items-center gap-2 mb-2">
+             <AlertCircle size={12} /> Risk Note
+           </p>
+           <p className="text-slate-500 text-xs leading-relaxed font-medium italic">{template.riskNotes}</p>
+        </div>
       </div>
 
-      <div className="mt-8 pt-8 border-t border-[#1D1D26]">
+      <div className="mt-10 pt-10 border-t border-[#1D1D26]">
         <button 
-          onClick={onSelect}
-          className="w-full bg-[#0D0D12] text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] border border-[#1D1D26] hover:bg-blue-600 hover:border-blue-600 transition-all"
+          onClick={() => onSelect(template)}
+          className={`w-full py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${isRecommended ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-transparent text-slate-500 border border-[#1D1D26] hover:text-white hover:border-slate-700'}`}
         >
-          Select Framework
+          Use This Structure <ArrowRight size={14} />
         </button>
       </div>
     </div>
   );
 };
 
-export const Templates: React.FC<{ setView: (v: any) => void }> = ({ setView }) => {
-  const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState<TemplateCategory | 'All'>('All');
+export const Templates: React.FC<{ setView: (v: AppView) => void; onSelectTemplate: (t: ResumeTemplate) => void }> = ({ setView, onSelectTemplate }) => {
+  const [activeField, setActiveField] = useState<TemplateField | 'All'>('All');
 
-  const categories: (TemplateCategory | 'All')[] = ['All', 'Technology', 'Business & Operations', 'Design & Creative', 'Finance', 'Research & Academia', 'Early Career'];
-
-  const filtered = RESUME_TEMPLATES.filter(t => {
-    const matchesSearch = t.role.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = activeCategory === 'All' || t.category === activeCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filtered = useMemo(() => {
+    if (activeField === 'All') return RESUME_TEMPLATES;
+    return RESUME_TEMPLATES.filter(t => t.field === activeField);
+  }, [activeField]);
 
   return (
-    <div className="max-w-7xl mx-auto py-12 px-10">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-8 mb-16">
-        <div>
-          <div className="flex items-center gap-3 text-blue-500 mb-6 bg-blue-500/5 w-fit px-4 py-1.5 rounded-full border border-blue-500/10">
-            <Grid size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Structural Repository</span>
-          </div>
-          <h2 className="text-6xl font-black text-white tracking-tighter leading-none mb-4">Frameworks</h2>
-          <p className="text-gray-500 text-xl font-medium max-w-2xl">
-            Profession-grounded resume structures aligned with real-world screening heuristics.
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-4">
-           <div className="relative w-80">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search by role or keyword..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-[#16161E] border border-[#1D1D26] rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:outline-none focus:border-blue-500 transition-all"
-              />
-           </div>
-           <div className="flex gap-2">
-              {categories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
-                    activeCategory === cat ? 'bg-blue-600 border-blue-600 text-white' : 'bg-[#16161E] border-[#1D1D26] text-gray-500 hover:text-white'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-           </div>
-        </div>
+    <div className="max-w-7xl mx-auto py-16 px-10">
+      <div className="mb-20">
+        <h2 className="text-5xl font-black text-white tracking-tighter uppercase mb-4 leading-none">Resume Structures Recruiters Actually See</h2>
+        <p className="text-slate-500 text-lg font-medium max-w-2xl leading-relaxed">
+          Real resume layouts used in successful applications. No decorative templates. All structures are ATS-safe and optimized for recruiter scanning.
+        </p>
       </div>
 
-      {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filtered.map(t => (
-            <TemplateCard key={t.id} template={t} onSelect={() => setView('resume-builder')} />
-          ))}
-        </div>
-      ) : (
-        <div className="py-40 text-center bg-[#16161E] rounded-[3rem] border border-dashed border-[#1D1D26] opacity-50">
-           <Terminal size={48} className="mx-auto text-gray-700 mb-6" />
-           <p className="text-gray-600 font-black uppercase tracking-[0.3em] text-xs">No matching structural patterns found</p>
-        </div>
-      )}
+      <div className="flex flex-wrap gap-4 mb-16">
+        <button 
+          onClick={() => setActiveField('All')}
+          className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${activeField === 'All' ? 'bg-white text-black border-white' : 'text-slate-500 border-[#2D313D] hover:text-white hover:border-slate-600'}`}
+        >
+          All Fields
+        </button>
+        {FIELDS.map(f => (
+          <button 
+            key={f}
+            onClick={() => setActiveField(f)}
+            className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${activeField === f ? 'bg-blue-600 text-white border-blue-600' : 'text-slate-500 border-[#2D313D] hover:text-white hover:border-slate-600'}`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
 
-      <div className="mt-20 p-12 bg-[#0D0D12] rounded-[3rem] border border-[#1D1D26] border-dashed text-center">
-         <p className="text-[10px] font-black text-gray-700 uppercase tracking-[0.5em] mb-4">Quality Standard</p>
-         <p className="text-gray-500 text-sm max-w-xl mx-auto leading-relaxed font-medium">
-           All HireMax frameworks are single-column, ATS-safe, and follow role-specific recruiter scanning patterns. Visual noise and high-risk elements are excluded by design.
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+        {filtered.map(t => (
+          <FrameworkCard 
+            key={t.id} 
+            template={t} 
+            isRecommended={t.variant === 'Primary'}
+            onSelect={onSelectTemplate} 
+          />
+        ))}
+      </div>
+
+      <div className="mt-24 p-12 bg-[#0D0D12] rounded-[3rem] border border-[#1D1D26] border-dashed text-center">
+         <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.5em] mb-4">Quality Standard</p>
+         <p className="text-slate-500 text-sm max-w-xl mx-auto leading-relaxed font-medium">
+           HireMax frameworks prioritize structural integrity over stylistic flexibility. 
+           Content comes first, format second. Selecting a structure will configure your next Resume Rebuild session.
          </p>
       </div>
     </div>

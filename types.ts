@@ -1,4 +1,30 @@
 
+export type UserPlan = 'Starter' | 'Market Verdict' | 'Career Pro' | 'Career Elite';
+
+export type AppView = 
+  | 'landing'
+  | 'auth'
+  | 'dashboard' 
+  | 'ai-review' 
+  | 'full-review' 
+  | 'rebuild'
+  | 'rebuild-standalone'
+  | 'career-intelligence' 
+  | 'templates' 
+  | 'pricing'
+  | 'settings'
+  | 'billing'
+  | 'faq'
+  | 'contact'
+  | 'history'
+  | 'resume-editor'
+  | 'signal-hub'
+  | 'recruiter-scan'
+  | 'rejection-model'
+  | 'role-saturation'
+  | 'skill-radar'
+  | 'longevity-estimate';
+
 export interface ActionCardData {
   id: string;
   title: string;
@@ -14,100 +40,192 @@ export interface GoalItem {
   completed: boolean;
 }
 
-export type Verdict = 'Pass' | 'Weak' | 'Failing';
-export type SignalAcquisitionType = 'project' | 'internship' | 'academic' | 'production' | 'unknown';
-export type ProbabilityBand = 'Low' | 'Medium' | 'High';
-export type DensityLevel = 'Low' | 'Medium' | 'High';
-export type SkillStatus = 'Stable' | 'Declining';
-export type LongevityStatus = 'Short-lived' | 'Moderate' | 'Durable';
-
-export interface RecruiterScanObservation {
-  observation: string;
-  category: 'visible' | 'skipped' | 'concern';
-  element: string;
-}
-
-export interface RejectionReason {
-  reason: 'Overqualified' | 'Underqualified' | 'Misaligned role' | 'Weak signals' | 'Market saturation';
-  probability: ProbabilityBand;
-  explanation: string;
-}
-
-export interface SkillRadarItem {
-  skill: string;
-  status: SkillStatus;
-  marketNote: string;
-}
-
-export interface AnalysisPoint {
+export interface EightPointItem {
   id: string;
-  title: string;
-  verdict: Verdict;
-  impact: string;
-  issues: string[];
-  remediation: string[];
-  type: 'skill_acquisition' | 'resume_update' | 'strategic_pivot';
-  acquisitionClassification: SignalAcquisitionType;
-  examples: {
-    bad: string;
-    good: string;
-  };
+  name: string;
+  score: number;
+  explanation?: string;
+  evidence?: string[];
+  implications?: string;
+  status?: 'Safe' | 'Degraded' | 'Auto-reject risk';
 }
 
-export interface MarketInsight {
-  trend: string;
-  implication: string;
+export interface SkillSuggestion {
+  name: string;
+  reason: string;
+}
+
+export interface StructuredResume {
+  contact: {
+    full_name: string;
+    email: string;
+    phone: string;
+    location: string;
+    links: string[];
+  };
+  summary: string;
+  education: {
+    institution: string;
+    degree: string;
+    dates: string;
+    details: string;
+  }[];
+  experience: {
+    title: string;
+    organization: string;
+    dates: string;
+    bullets: string[];
+  }[];
+  projects: {
+    name: string;
+    description: string;
+    impact: string;
+  }[];
+  skills: {
+    languages: string[];
+    frameworks: string[];
+    tools: string[];
+    specializations: string[];
+  };
+  leadership: {
+    role: string;
+    description: string;
+  }[];
+}
+
+export interface ResumeVersion {
+  versionId: string;
+  type: 'original' | 'optimized';
+  linkedAnalysisId?: string;
+  createdAt: string;
+  updatedAt: string;
+  templateId: string;
+  data: StructuredResume;
+}
+
+export interface ResumeGroup {
+  id: string;
+  name: string;
+  versions: ResumeVersion[];
+}
+
+export interface ComparisonData {
+  analysisId: string;
+  oldResume: string;
+  newResume: StructuredResume;
+  improvements: { change: string; reasoning: string }[];
+  scoreLift: number;
+  skillsToAdd: SkillSuggestion[];
 }
 
 export interface DiagnosticResult {
+  analysisId: string;
+  resumeVersionId?: string; // DB Link
   role: string;
+  resumeText: string;
   overallScore: number;
-  points: AnalysisPoint[];
-  marketInsights: MarketInsight[];
-  rebuildRoadmap: string[];
-  recruiterScan: RecruiterScanObservation[];
-  rejectionReasons: RejectionReason[];
-  noiseDetection: {
-    noiseDensity: DensityLevel;
-    signalToNoiseRatio: DensityLevel;
-    observations: string[];
+  foundation: {
+    atsShield: string;
+    readability: string;
+    marketReadiness: 'Low' | 'Medium' | 'High';
+    strengthsSnapshot: string[];
   };
-  roleSaturation: DensityLevel;
-  skillRadar: SkillRadarItem[];
+  eightPoints: EightPointItem[];
+  weaknessTeasers?: string[];
+  recruiterScan: {
+    category: 'visible' | 'skipped' | 'concern';
+    element: string;
+    observation: string;
+  }[];
+  rejectionReasons: {
+    probability: 'High' | 'Medium' | 'Low';
+    reason: string;
+    explanation: string;
+  }[];
+  roleSaturation: string;
+  skillRadar: {
+    skill: string;
+    marketNote: string;
+    status: 'Growing' | 'Stable' | 'Declining';
+  }[];
   longevityEstimate: {
-    status: LongevityStatus;
+    status: string;
     reasoning: string;
   };
 }
 
-export interface ImprovementDetail {
-  change: string;
-  reasoning: string;
+export type SignalDirection = 'Rising' | 'Stable' | 'Softening';
+
+export interface MarketSignal {
+  title: string;
+  direction: SignalDirection;
+  explanation: string;
+  whyItMatters: string;
+  category: 'Skill' | 'Role' | 'Industry' | 'Risk';
 }
 
-export interface ComparisonData {
-  oldResume: string;
-  newResume: string;
-  improvements: ImprovementDetail[];
-  scoreLift: number;
+export interface OutlookData {
+  positioning: {
+    band: 'Bottom' | 'Middle' | 'Upper';
+    risks: string[];
+    adjacentRoles: string[];
+  };
+  skills: {
+    increasingImportance: string[];
+    plateauing: string[];
+    commoditizationRisk: string[];
+  };
+  trajectory: {
+    pressure: 'Low' | 'Moderate' | 'High';
+    explanation: string;
+  };
+  watchlist: string[];
 }
 
-// Resume Builder Types
-export interface ExperienceItem {
+export interface MarketIntelligenceData {
+  syncStatus: string;
+  lastSync: string;
+  feed: MarketSignal[];
+  outlook: OutlookData;
+}
+
+// Added types for resume templates and builder functionality
+
+export type TemplateField = 'Software / Tech' | 'Data / Analytics' | 'Business / Management' | 'Student / Fresher' | 'General Professional';
+
+export interface ResumeTemplate {
   id: string;
-  company: string;
-  position: string;
-  location: string;
-  startDate: string;
-  endDate: string;
-  bullets: string[];
+  name: string;
+  targetRole: string;
+  seniority: string;
+  field: TemplateField;
+  usedWhen: string;
+  sectionOrder: string[];
+  recruiterScan: {
+    noticeFirst: string[];
+    skim: string[];
+    ignore: string[];
+  };
+  riskNotes: string;
+  variant: 'Primary' | 'Stretch' | 'Safe';
 }
 
-export interface EducationItem {
+export type SectionType = 'objective' | 'experience' | 'leadership' | 'projects' | 'research' | 'certifications' | 'awards' | 'publications' | 'skills' | 'education';
+
+export interface ResumeItem {
   id: string;
-  school: string;
-  degree: string;
-  graduationDate: string;
+  title: string;
+  subtitle?: string;
+  startDate?: string;
+  endDate?: string;
+  description?: string;
+}
+
+export interface ResumeSection {
+  id: string;
+  type: SectionType;
+  title: string;
+  items: ResumeItem[];
 }
 
 export interface ResumeData {
@@ -118,34 +236,6 @@ export interface ResumeData {
     location: string;
     linkedIn: string;
   };
-  experience: ExperienceItem[];
-  education: EducationItem[];
-  skills: string[];
   summary: string;
+  sections: ResumeSection[];
 }
-
-// Template Types
-export type TemplateCategory = 'Technology' | 'Business & Operations' | 'Design & Creative' | 'Finance' | 'Research & Academia' | 'Early Career';
-
-export interface ResumeTemplate {
-  id: string;
-  role: string;
-  category: TemplateCategory;
-  experienceLevel: 'Entry' | 'Mid' | 'Senior';
-  usedWhen: string;
-  screeningLogic: string;
-  riskNotes?: string;
-  sections: string[];
-}
-
-export type AppView = 
-  | 'dashboard' 
-  | 'ai-review' 
-  | 'resume-builder' 
-  | 'signal-hub' 
-  | 'templates' 
-  | 'recruiter-scan' 
-  | 'rejection-model' 
-  | 'role-saturation' 
-  | 'skill-radar' 
-  | 'longevity-estimate';
