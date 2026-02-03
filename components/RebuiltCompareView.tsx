@@ -19,9 +19,10 @@ import {
   Download,
   Save
 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { ComparisonData, UserPlan, DiagnosticResult, StructuredResume } from '../types';
 
+// Add missing interface definition for RebuiltCompareView component
 interface RebuiltCompareViewProps {
   analysisId: string | null;
   history: Record<string, DiagnosticResult>;
@@ -158,110 +159,29 @@ export const RebuiltCompareView: React.FC<RebuiltCompareViewProps> = ({ analysis
           3. Maintain original facts but optimize phrasing.
           4. Do NOT invent experience or inflate metrics.
           5. Identify 5-7 resume-focused skills to strengthen or add.
+
+          Return a JSON object in this format:
+          {
+            "newResume": {
+              "contact": { "full_name": string, "email": string, "phone": string, "location": string, "links": string[] },
+              "summary": string,
+              "education": Array<{ "institution": string, "degree": string, "dates": string, "details": string }>,
+              "experience": Array<{ "title": string, "organization": string, "dates": string, "bullets": string[] }>,
+              "projects": Array<{ "name": string, "description": string, "impact": string }>,
+              "skills": { "languages": string[], "frameworks": string[], "tools": string[], "specializations": string[] },
+              "leadership": Array<{ "role": string, "description": string }>
+            },
+            "improvements": Array<{ "change": string, "reasoning": string }>,
+            "scoreLift": number,
+            "skillsToAdd": Array<{ "name": string, "reason": string }>
+          }
         `;
 
         const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
           contents: prompt,
           config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                newResume: {
-                  type: Type.OBJECT,
-                  description: "Strictly follows the HireMax Resume Architect schema.",
-                  properties: {
-                    contact: {
-                      type: Type.OBJECT,
-                      properties: {
-                        full_name: { type: Type.STRING },
-                        email: { type: Type.STRING },
-                        phone: { type: Type.STRING },
-                        location: { type: Type.STRING },
-                        links: { type: Type.ARRAY, items: { type: Type.STRING } }
-                      }
-                    },
-                    summary: { type: Type.STRING },
-                    education: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          institution: { type: Type.STRING },
-                          degree: { type: Type.STRING },
-                          dates: { type: Type.STRING },
-                          details: { type: Type.STRING }
-                        }
-                      }
-                    },
-                    experience: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          title: { type: Type.STRING },
-                          organization: { type: Type.STRING },
-                          dates: { type: Type.STRING },
-                          bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
-                        }
-                      }
-                    },
-                    projects: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          name: { type: Type.STRING },
-                          description: { type: Type.STRING },
-                          impact: { type: Type.STRING }
-                        }
-                      }
-                    },
-                    skills: {
-                      type: Type.OBJECT,
-                      properties: {
-                        languages: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        frameworks: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        tools: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        specializations: { type: Type.ARRAY, items: { type: Type.STRING } }
-                      }
-                    },
-                    leadership: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          role: { type: Type.STRING },
-                          description: { type: Type.STRING }
-                        }
-                      }
-                    }
-                  }
-                },
-                improvements: { 
-                  type: Type.ARRAY, 
-                  items: { 
-                    type: Type.OBJECT,
-                    properties: {
-                      change: { type: Type.STRING },
-                      reasoning: { type: Type.STRING }
-                    }
-                  } 
-                },
-                scoreLift: { type: Type.NUMBER },
-                skillsToAdd: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      name: { type: Type.STRING },
-                      reason: { type: Type.STRING }
-                    }
-                  }
-                }
-              }
-            }
+            responseMimeType: "application/json"
           }
         });
 
@@ -283,32 +203,36 @@ export const RebuiltCompareView: React.FC<RebuiltCompareViewProps> = ({ analysis
     };
 
     performRebuild();
-  }, [analysisId]);
+  }, [analysisId, analysis]);
 
   const handleDownload = () => {
     const printWindow = window.open('', '_blank');
     if (printWindow) {
-      const content = document.getElementById('resume-rebuilt-preview')?.innerHTML;
-      const styles = document.head.innerHTML;
+      const content = document.getElementById('resume-rebuilt-preview')?.outerHTML;
+      const resumeName = data?.newResume?.contact?.full_name || 'Resume';
+      // Strip original title to prevent branding in headers
+      const styles = document.head.innerHTML.replace(/<title>.*?<\/title>/g, '');
+      
       printWindow.document.write(`
         <html>
           <head>
+            <title>${resumeName}</title>
             ${styles}
             <style>
-              body { background: white !important; }
+              body { background: white !important; margin: 0 !important; padding: 0 !important; }
               @media print {
+                @page { margin: 0; }
+                body { margin: 1.6cm; }
                 .no-print { display: none; }
+                #resume-rebuilt-preview { box-shadow: none !important; width: 100% !important; }
               }
             </style>
           </head>
           <body>
-            <div style="padding: 40px;">
-              ${content}
-            </div>
+            <div>${content}</div>
             <script>
               window.onload = () => {
                 window.print();
-                // window.close();
               };
             </script>
           </body>

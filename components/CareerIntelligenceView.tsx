@@ -1,298 +1,372 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  BarChart, 
+  ShieldCheck, 
+  ArrowRight, 
+  ArrowLeft, 
+  Loader2, 
+  Activity, 
   TrendingUp, 
+  Zap, 
+  AlertCircle, 
   ShieldAlert, 
-  Clock, 
-  Target,
-  Sparkles,
-  Zap,
-  ArrowRight,
+  Fingerprint, 
+  Cpu, 
+  Workflow,
+  BarChart3,
+  Binary,
+  Timer,
+  Scale,
+  Stamp,
+  Shield,
+  Gavel, 
+  CheckCircle2, 
+  XCircle, 
+  Lock, 
+  FileText, 
+  AlertTriangle, 
+  History, 
+  ShieldX, 
+  Terminal, 
+  Target, 
+  Send, 
+  Flag, 
+  CalendarDays, 
+  Crosshair, 
+  Key, 
+  Plus,
   RefreshCw,
-  Activity,
-  ArrowLeft,
-  AlertTriangle,
-  Info,
-  Loader2,
-  ChevronRight,
-  ShieldCheck
+  Eye,
+  Radar,
+  ArrowDownCircle,
+  AlertOctagon,
+  Factory,
+  FastForward,
+  Clock
 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
-import { MarketIntelligenceData, MarketSignal, OutlookData, SignalDirection, DiagnosticResult, UserPlan } from '../types';
+import { DiagnosticResult, UserPlan, MarketCommandSnapshot, AppView, BackgroundJob, JobType } from '../types';
 
 interface CareerIntelligenceViewProps {
   analysisResult: DiagnosticResult | null;
   resumeText: string;
   plan: UserPlan;
+  setView: (v: AppView) => void;
+  activeJobs: Record<string, BackgroundJob>;
+  dispatchJob: (type: JobType, payload: any) => Promise<string>;
 }
 
-const DirectionBadge: React.FC<{ direction: SignalDirection }> = ({ direction }) => {
-  const styles = {
-    'Rising': 'bg-green-500/10 text-green-400 border-green-500/20',
-    'Stable': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    'Softening': 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-  };
-  return (
-    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${styles[direction]}`}>
-      {direction}
-    </span>
-  );
+const CACHE_KEY = 'hiremax_market_snapshot';
+
+const getRelativeTime = (timestamp: string) => {
+  const now = new Date();
+  const past = new Date(timestamp);
+  const diffInMs = now.getTime() - past.getTime();
+  const diffInMins = Math.floor(diffInMs / (1000 * 60));
+  const diffInHours = Math.floor(diffInMins / 60);
+  const diffInDays = Math.floor(diffInHours / 24);
+
+  if (diffInDays > 0) return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+  if (diffInHours > 0) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+  if (diffInMins > 0) return `${diffInMins} minute${diffInMins > 1 ? 's' : ''} ago`;
+  return 'just now';
 };
 
-const InsufficientData: React.FC<{ message: string }> = ({ message }) => (
-  <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-10">
-    <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mb-8 border border-slate-800">
-      <ShieldCheck className="text-slate-600" size={32} />
-    </div>
-    <h2 className="text-xl font-black text-slate-500 uppercase tracking-[0.2em]">{message}</h2>
-  </div>
-);
+export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({ analysisResult, plan, setView, activeJobs, dispatchJob }) => {
+  const [viewState, setViewState] = useState<'input' | 'processing' | 'snapshot' | 'quota_error'>('input');
+  const [snapshot, setSnapshot] = useState<MarketCommandSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({ analysisResult, resumeText, plan }) => {
-  // STRICT INPUT VALIDATION
-  if (plan !== 'Career Elite') return <InsufficientData message="INSUFFICIENT ACCESS — CAREER ELITE REQUIRED" />;
-  if (!resumeText) return <InsufficientData message="INSUFFICIENT DATA — RESUME NOT PROVIDED" />;
-  if (!analysisResult?.role) return <InsufficientData message="INSUFFICIENT DATA — ROLE NOT SELECTED" />;
-  if (!analysisResult?.eightPoints || analysisResult.eightPoints.length === 0) return <InsufficientData message="INSUFFICIENT DATA — ANALYSIS NOT COMPLETED" />;
+  const [targetRole, setTargetRole] = useState(analysisResult?.role || '');
+  const [geography, setGeography] = useState('Remote / North America');
+  const [expBand, setExpBand] = useState('Senior (5-8 years)');
 
-  const [subView, setSubView] = useState<'overview' | 'feed'>('overview');
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<MarketIntelligenceData | null>(null);
+  // Background Job Logic
+  const runningJobId = useMemo(() => {
+    return Object.keys(activeJobs).find(id => activeJobs[id].type === 'OUTLOOK' && activeJobs[id].status === 'RUNNING');
+  }, [activeJobs]);
 
   useEffect(() => {
-    const fetchEliteData = async () => {
-      setLoading(true);
-      try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-pro-preview',
-          contents: `Generate a deterministic Market Intelligence report for a Career Elite user. 
-          
-          USER INPUT:
-          Target Role: ${analysisResult.role}
-          Resume Content: ${resumeText}
-          8-Point Analysis Scores: ${JSON.stringify(analysisResult.eightPoints.map(p => ({ name: p.name, score: p.score })))}
-          
-          STRICT RULES:
-          1. GROUND ALL INSIGHTS ONLY IN THE PROVIDED DATA.
-          2. No generic advice or motivational language.
-          3. Use directional labels: Rising, Stable, Softening.
-          4. Market Feed signal categories: Skill, Role, Industry, Risk.
-          5. Outlook sections: Positioning (Band: Bottom/Middle/Upper), Skills (Increasing, Plateau, Commoditization), Trajectory Pressure (Low/Moderate/High), Strategic Watchlist (3-5 items).
-          6. If confidence is low, label output as "Directional".
-          `,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                syncStatus: { type: Type.STRING },
-                lastSync: { type: Type.STRING },
-                feed: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      title: { type: Type.STRING },
-                      direction: { type: Type.STRING, description: "Rising, Stable, Softening" },
-                      explanation: { type: Type.STRING },
-                      whyItMatters: { type: Type.STRING },
-                      category: { type: Type.STRING, description: "Skill, Role, Industry, Risk" }
-                    }
-                  }
-                },
-                outlook: {
-                  type: Type.OBJECT,
-                  properties: {
-                    positioning: {
-                      type: Type.OBJECT,
-                      properties: {
-                        band: { type: Type.STRING, description: "Bottom, Middle, Upper" },
-                        risks: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        adjacentRoles: { type: Type.ARRAY, items: { type: Type.STRING } }
-                      }
-                    },
-                    skills: {
-                      type: Type.OBJECT,
-                      properties: {
-                        increasingImportance: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        plateauing: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        commoditizationRisk: { type: Type.ARRAY, items: { type: Type.STRING } }
-                      }
-                    },
-                    trajectory: {
-                      type: Type.OBJECT,
-                      properties: {
-                        pressure: { type: Type.STRING, description: "Low, Moderate, High" },
-                        explanation: { type: Type.STRING }
-                      }
-                    },
-                    watchlist: { type: Type.ARRAY, items: { type: Type.STRING } }
-                  }
-                }
-              }
-            }
-          }
-        });
+    if (runningJobId) {
+      setViewState('processing');
+    }
+  }, [runningJobId]);
 
-        const parsed = JSON.parse(response.text || '{}');
-        setData(parsed);
-      } catch (err) {
-        console.error("Elite data fetch failed", err);
-      } finally {
-        setLoading(false);
+  useEffect(() => {
+    if (runningJobId) {
+      const job = activeJobs[runningJobId];
+      if (job.status === 'COMPLETED' && job.result) {
+        const result = job.result;
+        const newSnapshot: MarketCommandSnapshot = {
+          id: `CMD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+          timestamp: new Date().toISOString(),
+          expiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          context: job.payload.context,
+          ...result
+        };
+        setSnapshot(newSnapshot);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(newSnapshot));
+        setViewState('snapshot');
+      } else if (job.status === 'FAILED') {
+        setViewState('input');
       }
-    };
+    }
+  }, [activeJobs, runningJobId]);
 
-    fetchEliteData();
-  }, [analysisResult.role, resumeText, analysisResult.eightPoints]);
+  useEffect(() => {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const parsed: MarketCommandSnapshot = JSON.parse(cached);
+        setSnapshot(parsed);
+        setViewState('snapshot');
+      } catch (e) {
+        localStorage.removeItem(CACHE_KEY);
+      }
+    }
+  }, []);
 
-  if (loading) {
+  const handleGenerate = async (isRefresh = false) => {
+    if (!targetRole || !geography) return;
+    
+    setViewState('processing');
+    setErrorMessage(null);
+
+    const systemPrompt = `You are the HireMax Career Elite Market Command Engine.
+    ISSUE A MARKET COMMAND SNAPSHOT.
+    
+    INPUT CONTEXT:
+    Role: ${targetRole}
+    Geography: ${geography}
+    Experience: ${expBand}
+
+    OUTPUT RULES (STRICT):
+    1. MARKET STATUS: Decisive climate label (AGGRESSIVE, SELECTIVE, CAUTIOUS, or STAGNANT).
+    2. EXECUTION TARGETS: 5-10 specific, real-world companies hiring for this role now. Include EXACT public role titles.
+    3. DO NOT APPLY ZONE: Company types or roles to avoid based on current saturation or volatility.
+    4. ACTION ORDERS: Strict 7-day and 30-day non-negotiable execution steps.
+    5. NO ADVICE: No learning paths, no general career tips, no fluff. Execution only.
+
+    Return JSON in exactly this structure:
+    {
+      "marketStatus": { "label": string, "implication": string },
+      "executionTargets": [{ "company": string, "roleTitle": string, "fitReason": string, "confidence": number, "validityWindow": string }],
+      "doNotApplyZone": [{ "entityType": string, "reasoning": string }],
+      "actionOrders": { "next7Days": string[], "next30Days": string[], "positioningDirectives": string[], "interviewDirectives": string[] },
+      "risks": { "uncertainty": string, "refreshCondition": string }
+    }`;
+
+    await dispatchJob('OUTLOOK', { prompt: systemPrompt, context: { role: targetRole, geography, expBand } });
+  };
+
+  const handleClearCache = () => {
+    localStorage.removeItem(CACHE_KEY);
+    setViewState('input');
+  };
+
+  if (plan !== 'Career Elite' && plan !== 'Automation') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8">
-        <Loader2 size={64} className="text-indigo-500 animate-spin" strokeWidth={1.5} />
-        <div className="text-center">
-          <h3 className="text-2xl font-bold text-white mb-2 uppercase tracking-tight">Syncing Market Signals</h3>
-          <p className="text-slate-500 font-medium">Updating strategy map from global hiring patterns...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-10">
+        <Lock className="text-slate-700 mb-6" size={48} />
+        <h2 className="text-xl font-black text-white uppercase tracking-widest">Elite Tier Authorization Required</h2>
+        <p className="text-slate-500 text-sm mt-2 font-medium uppercase">Institutional Market Commands are restricted to Elite accounts.</p>
       </div>
     );
   }
 
-  if (subView === 'feed' && data) {
+  if (viewState === 'quota_error') {
     return (
-      <div className="max-w-[1200px] mx-auto py-12 px-10">
-        <div className="mb-16 flex items-center gap-6">
-          <button 
-            onClick={() => setSubView('overview')}
-            className="w-12 h-12 rounded-xl bg-[#16161E] border border-[#1D1D26] flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-xl"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <div className="flex items-center gap-3 text-indigo-500 mb-1">
-              <Activity size={14} />
-              <span className="text-[10px] font-black uppercase tracking-widest">Global Intelligence Loop</span>
+      <div className="max-w-3xl mx-auto py-24 px-10 text-center">
+        <Key size={48} className="text-amber-500 mx-auto mb-6" />
+        <h2 className="text-3xl font-black text-white uppercase">Quota Exhausted</h2>
+        <p className="text-slate-500 mt-4 mb-8">Shared infrastructure bandwidth reached. Authenticate with a private API key to maintain priority execution.</p>
+        <button onClick={() => setViewState('input')} className="text-blue-500 font-black uppercase tracking-widest text-xs">Return to Terminal</button>
+      </div>
+    );
+  }
+
+  if (viewState === 'input') {
+    return (
+      <div className="max-w-4xl mx-auto py-24 px-10 space-y-12 animate-in fade-in duration-700">
+        <div className="space-y-4">
+           <div className="flex items-center gap-3 text-blue-500 bg-blue-500/5 w-fit px-4 py-1.5 rounded-full border border-blue-500/10">
+              <Radar size={16} />
+              <span className="text-[10px] font-black uppercase tracking-widest">Directive Terminal</span>
+           </div>
+           <h2 className="text-5xl font-black text-white tracking-tighter uppercase leading-none">Operational Context</h2>
+           <p className="text-slate-500 text-lg font-medium leading-relaxed max-w-2xl">
+             Define your target perimeter. The system will generate a time-bound execution snapshot for the next 24 hours.
+           </p>
+        </div>
+
+        <div className="bg-[#16161E] border border-[#1D1D26] rounded-[3rem] p-12 space-y-10 shadow-2xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Target Designation</label>
+              <input value={targetRole} onChange={e => setTargetRole(e.target.value)} placeholder="e.g. Senior Staff Backend Engineer" className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-xl p-4 text-white outline-none focus:border-blue-500 font-bold" />
             </div>
-            <h2 className="text-4xl font-black text-white tracking-tighter uppercase">Market Feed</h2>
+            <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Geographic Focus</label>
+              <input value={geography} onChange={e => setGeography(e.target.value)} placeholder="e.g. London / EMEA" className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-xl p-4 text-white outline-none focus:border-blue-500 font-bold" />
+            </div>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {data.feed.map((signal, idx) => (
-            <div key={idx} className="bg-[#16161E] border border-[#1D1D26] p-8 rounded-3xl group hover:border-indigo-500/30 transition-all shadow-xl">
-              <div className="flex justify-between items-start mb-6">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-800/50 px-3 py-1 rounded-full">{signal.category} Signal</span>
-                <DirectionBadge direction={signal.direction} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-4 tracking-tight">{signal.title}</h3>
-              <p className="text-slate-400 text-sm leading-relaxed mb-6 font-medium">
-                {signal.explanation}
-              </p>
-              <div className="pt-6 border-t border-white/5">
-                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">Why this matters</p>
-                <p className="text-white text-xs font-bold leading-relaxed">{signal.whyItMatters}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-20 p-10 border border-[#1D1D26] border-dashed rounded-[3rem] text-center">
-          <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em] mb-4">Feed Integrity Principle</p>
-          <p className="text-slate-500 text-xs max-w-2xl mx-auto leading-relaxed font-medium">
-            Feed items are derived from weekly hiring records and emerging requirement deltas. These are directional observations, not guarantees of success.
-          </p>
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Experience Tier</label>
+            <select value={expBand} onChange={e => setExpBand(e.target.value)} className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-xl p-4 text-white outline-none focus:border-blue-500 font-bold appearance-none">
+              <option>Junior (0-2 years)</option>
+              <option>Mid-Level (3-5 years)</option>
+              <option>Senior (5-8 years)</option>
+              <option>Staff / Lead (8+ years)</option>
+            </select>
+          </div>
+          <button onClick={() => handleGenerate()} disabled={!targetRole || runningJobId !== undefined} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-6 rounded-3xl transition-all uppercase tracking-[0.2em] text-xs shadow-2xl flex items-center justify-center gap-3">
+            Generate Market Command <ArrowRight size={18} />
+          </button>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-[1200px] mx-auto py-12 px-10">
-      <div className="mb-20">
-        <div className="flex items-center gap-3 text-indigo-500 mb-4 bg-indigo-500/5 w-fit px-4 py-1 rounded-full border border-indigo-500/10">
-          <Sparkles size={14} />
-          <span className="text-[10px] font-black uppercase tracking-widest">Career Elite Strategy Map</span>
+  if (viewState === 'processing') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[70vh] gap-10">
+        <div className="relative">
+          <Loader2 size={80} className="text-blue-500 animate-spin" strokeWidth={1.5} />
+          <Target size={24} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white" />
         </div>
-        <h2 className="text-6xl font-black text-white mb-6 tracking-tighter uppercase">Market Outlook</h2>
-        <p className="text-slate-500 text-xl font-medium max-w-2xl leading-relaxed">
-          Forecasting market movements and long-term trust signals for your trajectory.
-        </p>
+        <div className="text-center space-y-3">
+          <h3 className="text-2xl font-black text-white uppercase tracking-tight">Synthesizing Market Signals</h3>
+          <p className="text-slate-500 text-sm font-bold uppercase tracking-widest">Bypassing generic data layers...</p>
+          <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] mt-4">Execution continues in background...</p>
+        </div>
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 mb-20">
-        <div className="lg:col-span-4 bg-[#16161E] border border-[#1D1D26] rounded-[3rem] p-10 shadow-xl flex flex-col">
-           <div className="flex items-center justify-between mb-8">
+  if (viewState === 'snapshot' && snapshot) {
+    const isExpired = new Date().getTime() > new Date(snapshot.expiry).getTime();
+
+    return (
+      <div className="max-w-[1200px] mx-auto py-12 px-10 animate-in fade-in duration-1000">
+        {/* Command Header */}
+        <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
+           <div className="space-y-4">
               <div className="flex items-center gap-3">
-                 <RefreshCw size={20} className="text-indigo-500 animate-[spin_4s_linear_infinite]" />
-                 <h3 className="text-white text-xl font-bold uppercase tracking-tight">Market Sync</h3>
+                 <div className="bg-blue-600 px-3 py-1 rounded text-[10px] font-black text-white uppercase tracking-widest">Institutional Product</div>
+                 <span className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em]">ID: {snapshot.id}</span>
+                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 border border-white/10 rounded text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                    <Clock size={10} className="text-blue-500" />
+                    Generated {getRelativeTime(snapshot.timestamp)}
+                 </div>
               </div>
-              <span className="text-[9px] font-black text-green-400 bg-green-400/10 px-2 py-0.5 rounded border border-green-400/20">Active</span>
-           </div>
-           
-           <div className="space-y-6 flex-1">
-              <div className="p-5 bg-white/5 rounded-2xl border border-white/5">
-                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Status</p>
-                 <p className="text-slate-200 text-sm font-bold">{data?.syncStatus || 'Active — Monitoring weekly market changes'}</p>
-                 <p className="text-[10px] text-slate-600 font-bold mt-2 uppercase tracking-widest">Last Sync: {data?.lastSync || '3 days ago'}</p>
-              </div>
-
-              <div className="space-y-4">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monitored Dimensions</p>
-                 {[
-                   { label: 'Skill demand movement', status: 'Rising' },
-                   { label: 'Role saturation changes', status: 'Stable' },
-                   { label: 'Seniority expectation drift', status: 'Stable' },
-                   { label: 'Compensation pressure', status: 'Softening' }
-                 ].map((d, i) => (
-                    <div key={i} className="flex justify-between items-center text-xs font-bold border-b border-white/5 pb-3">
-                       <span className="text-slate-500">{d.label}</span>
-                       <span className={`text-[10px] uppercase tracking-widest ${d.status === 'Rising' ? 'text-green-400' : d.status === 'Softening' ? 'text-amber-400' : 'text-blue-400'}`}>{d.status}</span>
-                    </div>
-                 ))}
+              <h2 className="text-6xl font-black text-white tracking-tighter uppercase leading-none">Market Command</h2>
+              <div className="flex items-center gap-6">
+                 <div className="flex flex-col">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Active Perimeter</span>
+                    <span className="text-sm font-bold text-white uppercase">{snapshot.context.role} | {snapshot.context.geography}</span>
+                 </div>
+                 <div className="w-[1px] h-8 bg-white/10" />
+                 <div className="flex flex-col">
+                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Snapshot Validity</span>
+                    <span className={`text-sm font-bold uppercase tracking-tight ${isExpired ? 'text-red-500' : 'text-amber-500'}`}>
+                       {isExpired ? `EXPIRED: ${new Date(snapshot.expiry).toLocaleTimeString()}` : `EXPIRES: ${new Date(snapshot.expiry).toLocaleTimeString()}`}
+                    </span>
+                 </div>
               </div>
            </div>
-
            <button 
-             onClick={() => setSubView('feed')}
-             className="mt-10 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-xl shadow-indigo-900/20 text-xs uppercase tracking-widest"
+             onClick={() => handleGenerate(true)}
+             className="flex items-center gap-2 text-slate-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest bg-[#16161E] border border-white/5 px-6 py-3 rounded-xl shadow-xl"
            >
-             View Full Market Feed <ArrowRight size={14} />
+             <RefreshCw size={14} /> Recalibrate Command
            </button>
         </div>
 
-        <div className="lg:col-span-8 space-y-10">
-           <div className="bg-[#16161E] border border-[#1D1D26] rounded-[3rem] p-10 shadow-xl">
-              <div className="flex items-center gap-3 mb-10">
-                 <div className="w-12 h-12 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-500">
-                    <Target size={24} />
+        {isExpired && (
+          <div className="mb-12 p-6 bg-red-500/5 border border-red-500/20 rounded-[2rem] flex items-center justify-between animate-in fade-in duration-500">
+             <div className="flex items-center gap-4">
+                <AlertCircle className="text-red-500" size={24} />
+                <div>
+                   <p className="text-white font-black text-sm uppercase tracking-tight">Market Snapshot Stale</p>
+                   <p className="text-slate-500 text-xs font-medium">This command perimeter has exceeded the 24H validity window. Recalibration is recommended for live accuracy.</p>
+                </div>
+             </div>
+             <button onClick={() => setViewState('input')} className="text-blue-500 font-black text-[10px] uppercase tracking-widest hover:text-white transition-colors">
+                Refresh Analysis →
+             </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+           {/* Primary Intelligence (LEFT) */}
+           <div className="lg:col-span-8 space-y-12">
+              
+              {/* 1. MARKET STATUS */}
+              <div className="bg-[#111118] border-l-4 border-blue-600 p-10 rounded-r-[3rem] shadow-2xl space-y-6">
+                 <div className="flex items-center gap-3 text-blue-500">
+                    <Activity size={20} />
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.3em]">1. Market Status Directive</h3>
                  </div>
-                 <h3 className="text-white text-2xl font-bold">Positioning Outlook</h3>
+                 <div className="space-y-4">
+                    <p className="text-4xl font-black text-white uppercase tracking-tighter">{snapshot.marketStatus.label} CLIMATE</p>
+                    <p className="text-slate-400 text-lg font-medium leading-relaxed italic border-l-2 border-white/10 pl-6">
+                      "{snapshot.marketStatus.implication}"
+                    </p>
+                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                 <div className="space-y-6">
-                    <div className="p-6 bg-blue-600/5 rounded-2xl border border-blue-500/10 text-center">
-                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Positioning Band</p>
-                       <p className="text-3xl font-black text-white">{data?.outlook.positioning.band || 'Middle'}</p>
+
+              {/* 2. EXECUTION TARGETS */}
+              <div className="space-y-6">
+                 <div className="flex items-center justify-between px-2">
+                    <h3 className="text-white font-black text-2xl uppercase tracking-tight">2. Execution Targets</h3>
+                    <div className="flex items-center gap-3 text-green-500 bg-green-500/5 px-4 py-1.5 rounded-full border border-green-500/10">
+                       <ShieldCheck size={14} />
+                       <span className="text-[9px] font-black uppercase tracking-widest">Verified Headcount</span>
                     </div>
-                    <div className="space-y-3">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Positioning Risks</p>
-                       {data?.outlook.positioning.risks.map((risk, i) => (
-                          <div key={i} className="flex gap-3 text-sm text-slate-400 font-medium">
-                             <span className="text-amber-500 mt-1 shrink-0">•</span>
-                             {risk}
+                 </div>
+                 <div className="bg-[#111118] border border-[#1D1D26] rounded-[3rem] overflow-hidden shadow-2xl">
+                    <div className="bg-[#16161E] px-10 py-4 border-b border-white/5 grid grid-cols-12 gap-4">
+                       <div className="col-span-4 text-[9px] font-black text-slate-600 uppercase tracking-widest">Company / Role</div>
+                       <div className="col-span-5 text-[9px] font-black text-slate-600 uppercase tracking-widest">Strategic Alignment</div>
+                       <div className="col-span-3 text-right text-[9px] font-black text-slate-600 uppercase tracking-widest">Confidence</div>
+                    </div>
+                    <div className="p-4 space-y-2">
+                       {snapshot.executionTargets.map((target, i) => (
+                          <div key={i} className="grid grid-cols-12 gap-4 items-center p-8 bg-white/[0.02] border border-white/5 rounded-2xl group hover:bg-white/[0.04] transition-all">
+                             <div className="col-span-4">
+                                <p className="text-white font-black text-lg uppercase tracking-tight">{target.company}</p>
+                                <p className="text-blue-500 text-[10px] font-bold uppercase tracking-widest mt-1">{target.roleTitle}</p>
+                             </div>
+                             <div className="col-span-5">
+                                <p className="text-slate-400 text-xs font-medium leading-relaxed">"{target.fitReason}"</p>
+                             </div>
+                             <div className="col-span-3 text-right">
+                                <div className="text-2xl font-black text-white">{target.confidence}%</div>
+                                <p className="text-[9px] font-bold text-slate-600 uppercase">SIGNAL SCORE</p>
+                             </div>
                           </div>
                        ))}
                     </div>
                  </div>
-                 <div className="bg-[#0D0D12] rounded-2xl p-6 border border-white/5">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Safer Adjacent Roles</p>
-                    <div className="space-y-3">
-                       {data?.outlook.positioning.adjacentRoles.map((role, i) => (
-                          <div key={i} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                             <span className="text-xs font-bold text-white">{role}</span>
-                             <ChevronRight size={14} className="text-slate-600" />
+              </div>
+
+              {/* 3. DO NOT APPLY ZONE */}
+              <div className="bg-red-600/5 border border-red-500/20 p-12 rounded-[3rem] shadow-xl space-y-10 relative overflow-hidden">
+                 <div className="absolute top-0 right-0 p-10 opacity-[0.03] text-red-500 rotate-12">
+                    <AlertOctagon size={200} />
+                 </div>
+                 <div className="relative z-10">
+                    <div className="flex items-center gap-3 text-red-500 mb-8">
+                       <ShieldX size={20} />
+                       <h3 className="text-[11px] font-black uppercase tracking-[0.3em]">3. Exclusion Zone (No Entry)</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       {snapshot.doNotApplyZone.map((zone, i) => (
+                          <div key={i} className="space-y-3">
+                             <p className="text-red-500 font-black text-xs uppercase tracking-[0.1em] underline decoration-red-900 underline-offset-4">{zone.entityType}</p>
+                             <p className="text-slate-400 text-sm font-medium leading-relaxed italic">
+                                {zone.reasoning}
+                             </p>
                           </div>
                        ))}
                     </div>
@@ -300,90 +374,154 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({ 
               </div>
            </div>
 
-           <div className="bg-[#16161E] border border-[#1D1D26] rounded-[3rem] p-10 shadow-xl">
-              <div className="flex items-center gap-3 mb-10">
-                 <div className="w-12 h-12 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-500">
-                    <Activity size={24} />
+           {/* Execution Sidebar (RIGHT) */}
+           <div className="lg:col-span-4 space-y-12">
+              
+              {/* RUN NEW ANALYSIS WIDGET */}
+              <div className="bg-[#16161E] border border-white/5 p-10 rounded-[3rem] shadow-xl space-y-6 group hover:border-blue-500/30 transition-all">
+                 <div className="flex items-center gap-3 text-blue-500">
+                    <Target size={20} />
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em]">Target Perimeter</h3>
                  </div>
-                 <h3 className="text-white text-2xl font-bold">Skill Landscape (12-24mo)</h3>
+                 <div className="space-y-4">
+                    <p className="text-slate-400 text-xs font-medium leading-relaxed">Currently monitoring market deltas for Staff/Senior roles in your region.</p>
+                    <button 
+                      onClick={() => setViewState('input')}
+                      className="w-full flex items-center justify-center gap-2 py-4 bg-[#0D0D12] border border-white/5 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-blue-600 hover:border-blue-500 transition-all group/btn"
+                    >
+                      <Plus size={14} /> Run New Market Analysis
+                    </button>
+                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 {[
-                   { label: 'Demand Increasing', list: data?.outlook.skills.increasingImportance, color: 'text-green-400' },
-                   { label: 'Demand Plateauing', list: data?.outlook.skills.plateauing, color: 'text-blue-400' },
-                   { label: 'Commoditization Risk', list: data?.outlook.skills.commoditizationRisk, color: 'text-amber-400' }
-                 ].map((col, i) => (
-                    <div key={i} className="space-y-4">
-                       <p className={`text-[10px] font-black uppercase tracking-widest ${col.color}`}>{col.label}</p>
-                       <div className="space-y-2">
-                          {col.list?.map((s, idx) => (
-                             <div key={idx} className="text-xs font-bold text-slate-400 p-3 bg-white/5 rounded-xl border border-white/5">
-                                {s}
-                             </div>
-                          ))}
+
+              {/* 4. ACTION ORDERS */}
+              <div className="bg-blue-600 border border-blue-500 p-10 rounded-[3.5rem] shadow-2xl space-y-12 text-white relative overflow-hidden group">
+                 <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+                    <Send size={160} />
+                 </div>
+                 <div className="relative z-10 space-y-10">
+                    <div className="flex items-center gap-3">
+                       <Gavel size={24} />
+                       <h3 className="text-xl font-black uppercase tracking-tighter">4. Action Orders</h3>
+                    </div>
+
+                    <div className="space-y-8">
+                       <div className="space-y-4">
+                          <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest flex items-center gap-2">
+                             <CalendarDays size={14} /> Next 7 Days (Tactical)
+                          </p>
+                          <div className="space-y-3">
+                             {snapshot.actionOrders.next7Days.map((order, i) => (
+                                <div key={i} className="flex gap-4 p-4 bg-white/10 rounded-2xl border border-white/5">
+                                   <span className="font-black text-blue-200">0{i+1}</span>
+                                   <p className="text-xs font-bold leading-relaxed">{order}</p>
+                                </div>
+                             ))}
+                          </div>
+                       </div>
+
+                       <div className="space-y-4">
+                          <p className="text-[10px] font-black text-blue-100 uppercase tracking-widest flex items-center gap-2">
+                             <TrendingUp size={14} /> Next 30 Days (Strategic)
+                          </p>
+                          <div className="space-y-3">
+                             {snapshot.actionOrders.next30Days.map((order, i) => (
+                                <div key={i} className="flex gap-4 p-4 bg-white/5 rounded-2xl">
+                                   <span className="font-black text-blue-300">0{i+1}</span>
+                                   <p className="text-xs font-medium leading-relaxed opacity-80">{order}</p>
+                                </div>
+                             ))}
+                          </div>
                        </div>
                     </div>
-                 ))}
+                 </div>
+              </div>
+
+              {/* SIGNAL DIRECTIVES */}
+              <div className="bg-[#16161E] border border-white/5 p-10 rounded-[3rem] shadow-xl space-y-8">
+                 <div className="flex items-center gap-3 text-indigo-500">
+                    <Binary size={20} />
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em]">Positioning Directives</h3>
+                 </div>
+                 <div className="space-y-6">
+                    <div className="space-y-3">
+                       <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Resume Layering</p>
+                       {snapshot.actionOrders.positioningDirectives.map((dir, i) => (
+                          <div key={i} className="flex items-start gap-3">
+                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
+                             <p className="text-xs text-slate-300 font-bold leading-relaxed">{dir}</p>
+                          </div>
+                       ))}
+                    </div>
+                    <div className="h-[1px] bg-white/5" />
+                    <div className="space-y-3">
+                       <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Interview Defense</p>
+                       {snapshot.actionOrders.interviewDirectives.map((dir, i) => (
+                          <div key={i} className="flex items-start gap-3">
+                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />
+                             <p className="text-xs text-slate-300 font-bold leading-relaxed">{dir}</p>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+              </div>
+
+              {/* 5. RISK & EXPIRY */}
+              <div className="p-10 border border-white/5 bg-[#0D0D12] rounded-[3rem] space-y-6">
+                 <div className="flex items-center gap-3 text-slate-500">
+                    <AlertTriangle size={20} />
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em]">5. Risk Register</h3>
+                 </div>
+                 <div className="space-y-4">
+                    <div>
+                       <p className="text-[9px] font-black text-red-500/60 uppercase tracking-widest mb-1">Primary Uncertainty</p>
+                       <p className="text-sm font-bold text-slate-400 italic">"{snapshot.risks.uncertainty}"</p>
+                    </div>
+                    <div className="pt-6 border-t border-white/5 flex items-center gap-4">
+                       <Timer size={14} className="text-amber-500" />
+                       <div>
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Recalibrate if:</p>
+                          <p className="text-[10px] font-black text-white">{snapshot.risks.refreshCondition}</p>
+                       </div>
+                    </div>
+                 </div>
               </div>
            </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-20">
-         <div className="bg-[#16161E] border border-[#1D1D26] rounded-[3.5rem] p-12 shadow-xl relative overflow-hidden group">
-            <div className="flex items-center gap-3 mb-10">
-               <div className="w-12 h-12 rounded-xl bg-amber-600/10 flex items-center justify-center text-amber-500">
-                  <ShieldAlert size={24} />
-               </div>
-               <h3 className="text-white text-2xl font-bold">Trajectory Pressure</h3>
+        {/* System Transition Widget */}
+        <div className="mt-24 p-12 bg-[#111118] border border-blue-500/20 rounded-[3.5rem] shadow-2xl relative overflow-hidden group ring-1 ring-white/5">
+          <div className="absolute top-0 right-0 p-10 opacity-[0.03] text-blue-500 pointer-events-none">
+            <Factory size={160} />
+          </div>
+          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-12">
+            <div className="max-w-2xl space-y-4 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-3 text-blue-500 mb-2">
+                <FastForward size={18} />
+                <h3 className="text-[10px] font-black uppercase tracking-[0.4em]">System Transition: Insight to Execution</h3>
+              </div>
+              <p className="text-white text-3xl font-black uppercase tracking-tight leading-none">Market Outlook Directive Complete</p>
+              <p className="text-slate-500 text-base font-medium leading-relaxed">
+                Market Outlook provided intelligence on role-level conditions. Automation Factory is the next logical step in the pipeline, utilizing your specific resume artifacts to orchestrate personalized applying, document rebuilding, and autonomous deployment loops.
+              </p>
             </div>
-            <div className="space-y-8">
-               <div className="flex items-end gap-3">
-                  <span className={`text-6xl font-black ${data?.outlook.trajectory.pressure === 'High' ? 'text-red-500' : 'text-blue-500'}`}>
-                    {data?.outlook.trajectory.pressure || 'Moderate'}
-                  </span>
-                  <span className="text-slate-500 font-bold text-xl mb-1 uppercase tracking-widest">Pressure</span>
-               </div>
-               <p className="text-slate-400 text-base font-medium leading-relaxed italic">
-                 {data?.outlook.trajectory.explanation || "System generated analysis of structural pressures affecting career progression bands."}
-               </p>
-               <div className="p-4 bg-amber-600/5 border border-amber-500/10 rounded-2xl flex items-center gap-3">
-                  <Info size={16} className="text-amber-500 shrink-0" />
-                  <p className="text-[11px] font-bold text-amber-500/80 uppercase tracking-widest">
-                    Trajectory modeling is updated weekly based on seniority compression signals.
-                  </p>
-               </div>
-            </div>
-         </div>
+            <button 
+              onClick={() => setView('transformation-factory')}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-black py-6 px-12 rounded-2xl transition-all uppercase tracking-[0.2em] text-[10px] shadow-xl shadow-blue-900/40 flex items-center justify-center gap-4 shrink-0 group-hover:scale-[1.02]"
+            >
+              Initialize Automation Factory <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
 
-         <div className="bg-indigo-600 rounded-[3.5rem] p-12 text-white shadow-2xl relative overflow-hidden group">
-            <Sparkles className="absolute bottom-4 right-4 opacity-10 group-hover:scale-110 transition-transform" size={160} />
-            <div className="relative z-10">
-               <div className="flex items-center gap-3 mb-10">
-                  <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center">
-                     <Clock size={24} />
-                  </div>
-                  <h3 className="text-2xl font-bold tracking-tight">Strategic Watchlist</h3>
-               </div>
-               <p className="text-indigo-100 font-medium mb-10 leading-relaxed text-sm">
-                 Monitor these specific signals over the next quarter to maintain competitive leverage.
-               </p>
-               <div className="space-y-4">
-                  {data?.outlook.watchlist.map((item, i) => (
-                     <div key={i} className="flex items-center gap-4 p-4 bg-white/10 rounded-2xl border border-white/10 backdrop-blur-sm group/item hover:bg-white/20 transition-all">
-                        <div className="w-6 h-6 rounded-lg bg-indigo-400/20 flex items-center justify-center text-[10px] font-black">{i + 1}</div>
-                        <span className="text-sm font-bold">{item}</span>
-                     </div>
-                  ))}
-               </div>
-            </div>
-         </div>
+        {/* Footer Terminal Stamp */}
+        <div className="mt-20 pt-10 border-t border-white/5 flex justify-between items-center text-slate-800">
+           <p className="text-[10px] font-black uppercase tracking-[0.8em]">Career Elite Command Terminal v5.2</p>
+           <button onClick={handleClearCache} className="text-[9px] font-black uppercase tracking-widest hover:text-red-500 transition-colors">Clear Decision Cache</button>
+        </div>
       </div>
+    );
+  }
 
-      <div className="p-10 border border-[#1D1D26] border-dashed rounded-[3rem] text-center">
-        <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em] mb-4">Market Intelligence Principle</p>
-        <p className="text-slate-500 text-sm max-w-2xl mx-auto leading-relaxed font-medium"> Factual, analytical, and cautious. Strategy map does not provide subjective career coaching or guaranteed success metrics. </p>
-      </div>
-    </div>
-  );
+  return null;
 };

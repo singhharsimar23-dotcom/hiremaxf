@@ -13,8 +13,11 @@ import {
   MoreVertical,
   CheckCircle2,
   AlertCircle,
-  // Fix: Adding missing Target icon import from lucide-react
-  Target
+  Target,
+  Mail,
+  Phone,
+  MapPin,
+  Link as LinkIcon
 } from 'lucide-react';
 import { ResumeGroup, ResumeVersion, DiagnosticResult } from '../types';
 
@@ -32,7 +35,8 @@ const VersionRow: React.FC<{
   analysis: DiagnosticResult | undefined;
   onEdit: (gid: string, vid: string) => void;
   onView: (gid: string, vid: string) => void;
-}> = ({ version, groupId, analysis, onEdit, onView }) => {
+  onDownload: (data: any) => void;
+}> = ({ version, groupId, analysis, onEdit, onView, onDownload }) => {
   const isOptimized = version.type === 'optimized';
 
   return (
@@ -47,7 +51,7 @@ const VersionRow: React.FC<{
               {isOptimized ? 'Optimized Version' : 'Original Version'}
             </h4>
             <span className="text-[9px] font-black uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded text-slate-500">
-              v{version.versionId.slice(0, 4)}
+              v{version.versionId?.slice(0, 4)}
             </span>
           </div>
           <div className="flex items-center gap-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest">
@@ -77,6 +81,7 @@ const VersionRow: React.FC<{
           <Pencil size={18} />
         </button>
         <button 
+          onClick={() => onDownload(version.data)}
           className="p-2 text-slate-400 hover:text-white transition-colors"
           title="Download"
         >
@@ -88,6 +93,54 @@ const VersionRow: React.FC<{
 };
 
 export const ResumeHistoryView: React.FC<ResumeHistoryViewProps> = ({ history, analysisHistory, onEdit, onView, onStartNew }) => {
+  const handleDownload = (resume: any) => {
+    if (!resume || !resume.contact) return;
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      // Basic styling for the print window to match standard professional resume
+      const content = `
+        <div style="font-family: serif; color: black; max-width: 800px; margin: 0 auto;">
+          <header style="border-bottom: 2px solid #000; padding-bottom: 20px; margin-bottom: 30px;">
+            <h1 style="font-size: 28pt; text-transform: uppercase; margin: 0 0 10px 0;">${resume.contact.full_name}</h1>
+            <div style="font-size: 10pt; font-weight: bold; color: #444; display: flex; gap: 20px;">
+              <span>${resume.contact.email}</span>
+              <span>${resume.contact.phone || ''}</span>
+              <span>${resume.contact.location || ''}</span>
+            </div>
+          </header>
+          <section style="margin-bottom: 25px;">
+            <h2 style="font-size: 11pt; text-transform: uppercase; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Summary</h2>
+            <p style="font-size: 11pt; line-height: 1.5;">${resume.summary}</p>
+          </section>
+          <section style="margin-bottom: 25px;">
+            <h2 style="font-size: 11pt; text-transform: uppercase; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 15px;">Experience</h2>
+            ${(resume.experience || []).map((exp:any) => `
+              <div style="margin-bottom: 20px;">
+                <div style="display: flex; justify-between; align-items: baseline;">
+                  <h3 style="font-size: 13pt; font-bold; margin: 0;">${exp.title}</h3>
+                  <span style="font-size: 10pt; margin-left: auto;">${exp.dates}</span>
+                </div>
+                <p style="font-size: 11pt; font-style: italic; margin: 2px 0 8px 0;">${exp.organization}</p>
+                <ul style="padding-left: 20px; margin: 0;">
+                  ${(exp.bullets || []).map((b:string) => `<li style="font-size: 10.5pt; margin-bottom: 4px;">${b}</li>`).join('')}
+                </ul>
+              </div>
+            `).join('')}
+          </section>
+          ${resume.skills ? `
+          <section style="margin-bottom: 25px;">
+            <h2 style="font-size: 11pt; text-transform: uppercase; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Technical Skills</h2>
+            <p style="font-size: 10.5pt;"><strong>Languages:</strong> ${resume.skills.languages?.join(', ')}</p>
+            <p style="font-size: 10.5pt;"><strong>Frameworks:</strong> ${resume.skills.frameworks?.join(', ')}</p>
+          </section>` : ''}
+        </div>
+      `;
+      printWindow.document.write(`<html><head><title>${resume.contact.full_name} Resume</title></head><body>${content}</body></html>`);
+      printWindow.document.close();
+      printWindow.onload = () => { printWindow.print(); };
+    }
+  };
+
   return (
     <div className="max-w-[1200px] mx-auto py-12 px-10">
       <div className="flex justify-between items-end mb-16">
@@ -153,6 +206,7 @@ export const ResumeHistoryView: React.FC<ResumeHistoryViewProps> = ({ history, a
                     analysis={version.linkedAnalysisId ? analysisHistory[version.linkedAnalysisId] : undefined}
                     onEdit={onEdit}
                     onView={onView}
+                    onDownload={handleDownload}
                   />
                 ))}
               </div>

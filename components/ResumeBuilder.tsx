@@ -193,19 +193,34 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
   const handleDownload = () => {
     const printWindow = window.open('', '_blank');
     if (printWindow) {
-      const content = document.getElementById('resume-architect-preview')?.innerHTML;
-      const styles = document.head.innerHTML;
+      const content = document.getElementById('resume-architect-preview')?.outerHTML;
+      const candidateName = data.contact.fullName || 'Resume';
+      // Strip original title to prevent branding in headers
+      const styles = document.head.innerHTML.replace(/<title>.*?<\/title>/g, '');
+      
       printWindow.document.write(`
         <html>
           <head>
+            <title>${candidateName}</title>
             ${styles}
             <style>
-              body { background: white !important; }
-              @media print { .no-print { display: none; } }
+              body { background: white !important; margin: 0 !important; padding: 0 !important; }
+              @media print {
+                @page { margin: 0; }
+                body { margin: 1.6cm; }
+                .no-print { display: none; }
+                /* Ensure shadow and other UI elements are removed for clean print */
+                #resume-architect-preview { box-shadow: none !important; margin: 0 !important; width: 100% !important; }
+              }
             </style>
           </head>
-          <body><div style="padding: 40px;">${content}</div>
-          <script>window.onload = () => { window.print(); };</script>
+          <body>
+            <div>${content}</div>
+            <script>
+              window.onload = () => {
+                window.print();
+              };
+            </script>
           </body>
         </html>
       `);

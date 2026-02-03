@@ -17,7 +17,10 @@ import {
   Mail,
   Zap,
   ShieldCheck,
-  TrendingUp
+  TrendingUp,
+  Lock,
+  Radio,
+  Factory
 } from 'lucide-react';
 import { AppView, UserPlan } from '../types';
 
@@ -33,10 +36,11 @@ const NavLink: React.FC<{
   active: boolean; 
   onClick: () => void;
   icon?: React.ReactNode;
-}> = ({ label, active, onClick, icon }) => (
+  isLocked?: boolean;
+}> = ({ label, active, onClick, icon, isLocked }) => (
   <button 
     onClick={onClick}
-    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 font-bold text-sm whitespace-nowrap ${
+    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 font-bold text-sm whitespace-nowrap relative group ${
       active 
       ? 'text-white bg-white/5' 
       : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -44,6 +48,11 @@ const NavLink: React.FC<{
   >
     {icon}
     {label}
+    {isLocked && (
+      <div className="flex items-center justify-center w-4 h-4 rounded-full bg-amber-500/10 border border-amber-500/20 ml-1">
+        <Lock size={8} className="text-amber-500" />
+      </div>
+    )}
   </button>
 );
 
@@ -72,7 +81,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
 
   return (
     <header className="fixed top-0 left-0 right-0 h-20 bg-[#0F1117] border-b border-[#2D313D] px-8 flex items-center justify-between z-[100] shadow-xl">
-      <div className="flex items-center gap-6 lg:gap-10">
+      <div className="flex items-center gap-6 lg:gap-8">
         <div 
           className="flex items-center gap-3 cursor-pointer group shrink-0" 
           onClick={() => setView('dashboard')}
@@ -90,38 +99,37 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             onClick={() => setView('dashboard')} 
             icon={<LayoutDashboard size={18} className="opacity-70" />}
           />
-          <NavLink 
-            label="AI Review" 
-            active={currentView === 'ai-review'} 
-            onClick={() => setView('ai-review')} 
-            icon={<Search size={18} className="opacity-70" />}
-          />
           
-          {/* Unlocked for Pro and Elite */}
-          {isPro && (
-            <NavLink 
-              label="Intelligence Report" 
-              active={currentView === 'full-review'} 
-              onClick={() => setView('full-review')} 
-              icon={<ShieldCheck size={18} className="opacity-70 text-amber-500" />}
-            />
-          )}
-
-          {/* Unlocked for Elite only */}
-          {isElite && (
-            <NavLink 
-              label="Market Outlook" 
-              active={currentView === 'career-intelligence'} 
-              onClick={() => setView('career-intelligence')} 
-              icon={<TrendingUp size={18} className="opacity-70 text-indigo-400" />}
-            />
-          )}
+          <NavLink 
+            label="Factory" 
+            active={currentView === 'transformation-factory'} 
+            onClick={() => setView('transformation-factory')} 
+            icon={<Factory size={18} className={`opacity-70 ${isElite ? 'text-blue-500' : 'text-slate-600'}`} />}
+            isLocked={!isElite}
+          />
 
           <NavLink 
-            label="Resume Rebuild" 
+            label="Intelligence" 
+            active={currentView === 'full-review'} 
+            onClick={() => setView('full-review')} 
+            icon={<ShieldCheck size={18} className={`opacity-70 ${isPro ? 'text-amber-500' : 'text-slate-600'}`} />}
+            isLocked={!isPro}
+          />
+
+          <NavLink 
+            label="Outlook" 
+            active={currentView === 'career-intelligence'} 
+            onClick={() => setView('career-intelligence')} 
+            icon={<TrendingUp size={18} className={`opacity-70 ${isElite ? 'text-indigo-400' : 'text-slate-600'}`} />}
+            isLocked={!isElite}
+          />
+
+          <NavLink 
+            label="Rebuild" 
             active={currentView === 'rebuild-standalone'} 
             onClick={() => setView('rebuild-standalone')} 
-            icon={<Sparkles size={18} className="opacity-70 text-blue-500" />}
+            icon={<Sparkles size={18} className={`opacity-70 ${isPro ? 'text-blue-500' : 'text-slate-600'}`} />}
+            isLocked={!isPro}
           />
           <NavLink 
             label="Templates" 

@@ -1,5 +1,7 @@
 {
   "name": "HireMax AI - Resume Optimizer",
   "description": "An AI-powered career dashboard for building, optimizing, and analyzing resumes with market-driven insights.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "geolocation"
+  ]
 }
