@@ -3,7 +3,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Search, 
-  Grid, 
   Plus,
   User,
   Shield,
@@ -19,8 +18,8 @@ import {
   ShieldCheck,
   TrendingUp,
   Lock,
-  Radio,
-  Factory
+  Factory,
+  Activity
 } from 'lucide-react';
 import { AppView, UserPlan } from '../types';
 
@@ -60,8 +59,8 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const isPro = plan === 'Career Pro' || plan === 'Career Elite';
-  const isElite = plan === 'Career Elite';
+  const isPro = plan === 'Career Pro' || plan === 'Career Elite' || plan === 'Automation';
+  const isElite = plan === 'Career Elite' || plan === 'Automation';
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -125,17 +124,19 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
           />
 
           <NavLink 
+            label="Execution" 
+            active={currentView === 'applications'} 
+            onClick={() => setView('applications')} 
+            icon={<Zap size={18} className={`opacity-70 ${isElite ? 'text-green-500' : 'text-slate-600'}`} />}
+            isLocked={!isElite}
+          />
+
+          <NavLink 
             label="Rebuild" 
             active={currentView === 'rebuild-standalone'} 
             onClick={() => setView('rebuild-standalone')} 
             icon={<Sparkles size={18} className={`opacity-70 ${isPro ? 'text-blue-500' : 'text-slate-600'}`} />}
             isLocked={!isPro}
-          />
-          <NavLink 
-            label="Templates" 
-            active={currentView === 'templates'} 
-            onClick={() => setView('templates')} 
-            icon={<Grid size={18} className="opacity-70" />}
           />
         </nav>
       </div>

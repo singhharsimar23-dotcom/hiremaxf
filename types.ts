@@ -1,21 +1,56 @@
 
 export type UserPlan = 'Starter' | 'Market Verdict' | 'Career Pro' | 'Career Elite' | 'Automation';
 
+export type IngestionMode = 'oauth' | 'public_profile' | 'manual_artifact';
+
 export type AppView = 
   | 'landing' | 'auth' | 'dashboard' | 'ai-review' | 'full-review' 
   | 'rebuild' | 'rebuild-standalone' | 'career-intelligence' 
-  | 'transformation-factory' | 'applications' | 'templates' | 'pricing' 
+  | 'transformation-factory' | 'applications' | 'pricing' 
   | 'settings' | 'billing' | 'faq' | 'contact' | 'history' | 'resume-editor'
   | 'signal-hub' | 'recruiter-scan' | 'rejection-model' | 'role-saturation'
   | 'skill-radar' | 'longevity-estimate' | 'admin-ops';
 
 export type RoleTrack = 'AI_PRODUCTION' | 'STARTUP_ENG' | 'BIG_TECH' | 'RESEARCH_ACADEMIC' | 'FINTECH_INFRA';
 
-export type PrimaryDomain = 'SWE' | 'DATA_ML' | 'DEVOPS_SRE' | 'PRODUCT_MGMT' | 'UNSELECTED';
+export type PrimaryDomain = 'SWE' | 'DATA_ML' | 'DEVOPS_SRE' | 'PRODUCT_MGMT' | 'DESIGN' | 'SECURITY' | 'UNSELECTED';
+
+export type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'aborted';
+export type TargetStatus = 'queued' | 'submitted' | 'failed';
+
+export interface DbExecutionRun {
+  id: string;
+  user_id: string;
+  resume_id: string;
+  target_role: string;
+  status: RunStatus;
+  error_reason?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface DbExecutionTarget {
+  id: string;
+  run_id: string;
+  job_title: string;
+  company: string;
+  apply_url: string;
+  status: TargetStatus;
+  logs: string[];
+}
+
+export interface DbExecutionLog {
+  id: string;
+  run_id: string;
+  message: string;
+  level: 'info' | 'success' | 'error';
+  created_at: string;
+}
 
 export type JobType = 'ANALYSIS' | 'REBUILD' | 'OUTLOOK' | 'INGESTION' | 'EXECUTION';
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PAUSED' | 'THROTTLED';
 
+// Added BackgroundJob interface to fix missing import errors in App.tsx and other views
 export interface BackgroundJob {
   id: string;
   type: JobType;
@@ -27,60 +62,12 @@ export interface BackgroundJob {
   updatedAt: string;
 }
 
-export interface AgentLog {
+export interface ActivityLogEntry {
   id: string;
-  agent: 'Discovery' | 'Fetch' | 'Parser' | 'Dedupe' | 'Ranker' | 'Matcher' | 'Apply' | 'Guard';
-  message: string;
+  platform: string;
+  mode: IngestionMode;
+  action: 'CONNECTED' | 'SYNCED' | 'DISCONNECTED';
   timestamp: string;
-  level: 'info' | 'warn' | 'error' | 'success';
-}
-
-export interface ScoringBreakdown {
-  recency: number;      // 0-30
-  fit: number;          // 0-30
-  intent: number;       // 0-20
-  competition: number;  // 0-10
-  reliability: number;  // 0-10
-  total: number;        // 0-100
-}
-
-export interface NormalizedJob {
-  id: string;
-  title: string;
-  company: string;
-  location: string;
-  requirements: string[];
-  applyUrl: string;
-  postedTime: string;
-  source: string;
-  sourceType: 'ATS' | 'Aggregator' | 'Social';
-  scoring?: ScoringBreakdown;
-  match?: {
-    resumeId: string;
-    score: number;
-    customizationInstructions: string[];
-    gapAnalysis: string[];
-  };
-}
-
-export interface ExecutionRun {
-  id: string;
-  parameters: {
-    role: string;
-    geography: string;
-    companies: string[];
-    sources: string[];
-    applyMode: 'Manual' | 'Assisted' | 'Auto';
-    riskTolerance: 'Low' | 'Medium' | 'High';
-  };
-  stats: {
-    discovered: number;
-    ranked: number;
-    applied: number;
-    throttled: number;
-  };
-  logs: AgentLog[];
-  status: JobStatus;
 }
 
 export interface CareerSignal {
@@ -92,6 +79,14 @@ export interface CareerSignal {
   decayRate: number;
   lastUpdated: string;
   metadata: any;
+}
+
+// Added LinkedIdentity interface to fix missing import in TransformationFactory.tsx
+export interface LinkedIdentity {
+  verified: boolean;
+  mode: IngestionMode;
+  data: any;
+  lastSynced?: string;
 }
 
 export interface ResumeProfile {
@@ -109,8 +104,13 @@ export interface UserProfile {
   plan: UserPlan;
   credits: number;
   domain: PrimaryDomain;
-  resume_profiles: ResumeProfile[]; // Max 5
+  resume_profiles: ResumeProfile[];
   connected_providers: string[];
+  metadata?: {
+    identities?: Record<string, LinkedIdentity>;
+    daily_application_limit?: number;
+    applications_sent_today?: number;
+  };
 }
 
 export interface StructuredResume {
@@ -158,61 +158,6 @@ export interface ActionCardData {
   chartData: { value: number }[];
 }
 
-export interface GoalItem {
-  id: string;
-  label: string;
-  completed: boolean;
-}
-
-export interface ResumeTemplate {
-  id: string;
-  name: string;
-  targetRole: string;
-  seniority: string;
-  field: string;
-  usedWhen: string;
-  sectionOrder: string[];
-  recruiterScan: {
-    noticeFirst: string[];
-    skim: string[];
-    ignore: string[];
-  };
-  riskNotes: string;
-  variant: 'Primary' | 'Stretch' | 'Safe';
-}
-
-export type TemplateField = 'Software / Tech' | 'Data / Analytics' | 'Business / Management' | 'Student / Fresher' | 'General Professional';
-
-export type SectionType = 'objective' | 'experience' | 'leadership' | 'projects' | 'research' | 'certifications' | 'awards' | 'publications' | 'skills' | 'education';
-
-export interface ResumeItem {
-  id: string;
-  title: string;
-  subtitle?: string;
-  startDate?: string;
-  endDate?: string;
-  description?: string;
-}
-
-export interface ResumeSection {
-  id: string;
-  type: SectionType;
-  title: string;
-  items: ResumeItem[];
-}
-
-export interface ResumeData {
-  contact: {
-    fullName: string;
-    email: string;
-    phone: string;
-    location: string;
-    linkedIn: string;
-  };
-  summary: string;
-  sections: ResumeSection[];
-}
-
 export interface MarketCommandSnapshot {
   id: string;
   timestamp: string;
@@ -243,11 +188,59 @@ export interface ComparisonData {
   skillsToAdd: { name: string; reason: string }[];
 }
 
-export type UserLifecycleState = 'AWAITING_INGEST' | 'SIGNALS_READY' | 'ACTIVE_DEPLOYMENT';
+// Added GoalItem interface to fix import error in constants.tsx
+export interface GoalItem {
+  id: string;
+  label: string;
+  completed: boolean;
+}
 
-export interface LinkedIdentity {
-  provider: 'github' | 'linkedin';
-  scopeLevel: string;
-  verified: boolean;
-  lastSync: string;
+// Added Template and Resume Building types
+export type TemplateField = 'Software / Tech' | 'Data / Analytics' | 'Business / Management' | 'Student / Fresher' | 'General Professional';
+
+export interface ResumeTemplate {
+  id: string;
+  name: string;
+  targetRole: string;
+  seniority: string;
+  field: TemplateField;
+  usedWhen: string;
+  sectionOrder: string[];
+  recruiterScan: {
+    noticeFirst: string[];
+    skim: string[];
+    ignore: string[];
+  };
+  riskNotes: string;
+  variant: 'Primary' | 'Stretch';
+}
+
+export type SectionType = 'objective' | 'experience' | 'leadership' | 'projects' | 'research' | 'certifications' | 'awards' | 'publications' | 'skills' | 'education';
+
+export interface ResumeItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  startDate?: string;
+  endDate?: string;
+  description?: string;
+}
+
+export interface ResumeSection {
+  id: string;
+  type: SectionType;
+  title: string;
+  items: ResumeItem[];
+}
+
+export interface ResumeData {
+  contact: {
+    fullName: string;
+    email: string;
+    phone: string;
+    location: string;
+    linkedIn: string;
+  };
+  summary: string;
+  sections: ResumeSection[];
 }

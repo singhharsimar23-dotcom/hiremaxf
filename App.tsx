@@ -11,7 +11,6 @@ import { ApplicationsView } from './components/ApplicationsView';
 import { ResumeBuilder } from './components/ResumeBuilder';
 import { RebuiltCompareView } from './components/RebuiltCompareView';
 import { RebuildStandaloneView } from './components/RebuildStandaloneView';
-import { Templates } from './components/Templates';
 import { Pricing } from './components/Pricing';
 import { ResumeHistoryView } from './components/ResumeHistoryView';
 import { SignalHub } from './components/SignalHub';
@@ -21,14 +20,17 @@ import { Billing } from './components/Billing';
 import { FAQ } from './components/FAQ';
 import { Contact } from './components/Contact';
 import { FeatureTeaser } from './components/FeatureTeaser';
+import RealityCheckDetail from './components/ActiveStakingDetail';
+import ActionCard from './components/StakingCard';
 import { 
   ShieldCheck, Zap, Lock, Target, BarChart, ArrowRight, Sparkles, 
   Shield, UploadCloud, Plus, Info, Circle, X, Loader2, AlertTriangle,
-  History, FileText, ChevronRight
+  History, FileText, ChevronRight, Activity
 } from 'lucide-react';
 import { AppView, DiagnosticResult, UserPlan, ResumeGroup, StructuredResume, UserProfile, RoleTrack, BackgroundJob, JobType, JobStatus } from './types';
 import { supabase } from './lib/supabase';
 import { GoogleGenAI } from "@google/genai";
+import { QUICK_ACTIONS } from './constants';
 
 function DashboardWidget(props: any) {
   const label = props.label;
@@ -95,18 +97,13 @@ function App() {
   const [resumeHistory, setResumeHistory] = useState<ResumeGroup[]>([]);
   const [editingResumeId, setEditingResumeId] = useState<string | null>(null);
   const [editingVersionId, setEditingVersionId] = useState<string | null>(null);
-  const [preloadedData, setPreloadedData] = useState<any>(null);
 
-  const [rebuildContext, setRebuildContext] = useState<{ text: string; role: string; track: RoleTrack; gate?: 'SAFE' | 'BORDERLINE' | 'LOCKED' } | null>(null);
-
-  // Background Job Management
   const [jobs, setJobs] = useState<Record<string, BackgroundJob>>(() => {
     const saved = localStorage.getItem('hiremax_active_jobs');
     return saved ? JSON.parse(saved) : {};
   });
 
   const plan: UserPlan = profile && profile.plan ? profile.plan : 'Starter';
-  const isPro = plan === 'Career Pro' || plan === 'Career Elite' || plan === 'Automation';
   const isElite = plan === 'Career Elite' || plan === 'Automation';
   const currentAnalysis = activeAnalysisId ? analysisHistory[activeAnalysisId] : null;
 
@@ -140,18 +137,40 @@ function App() {
         result = JSON.parse(response.text || '{}');
       }
 
-      setJobs(prev => ({
-        ...prev,
-        [id]: { ...prev[id], status: 'COMPLETED', result, updatedAt: new Date().toISOString() }
-      }));
+      setJobs(prev => {
+        const updated = { ...prev };
+        updated[id] = { ...prev[id], status: 'COMPLETED', result, updatedAt: new Date().toISOString() };
+        return updated;
+      });
     } catch (e: any) {
-      setJobs(prev => ({
-        ...prev,
-        [id]: { ...prev[id], status: 'FAILED', error: e.message, updatedAt: new Date().toISOString() }
-      }));
+      setJobs(prev => {
+        const updated = { ...prev };
+        updated[id] = { ...prev[id], status: 'FAILED', error: e.message, updatedAt: new Date().toISOString() };
+        return updated;
+      });
     }
     
     return id;
+  }, []);
+
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      setJobs(prev => {
+        const now = new Date().getTime();
+        const updated = { ...prev };
+        let changed = false;
+        Object.keys(updated).forEach(id => {
+          const job = updated[id];
+          const jobTime = new Date(job.updatedAt).getTime();
+          if (job.status !== 'RUNNING' && now - jobTime > 300000) {
+            delete updated[id];
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
+      });
+    }, 60000);
+    return () => clearInterval(cleanup);
   }, []);
 
   useEffect(function() {
@@ -265,20 +284,22 @@ function App() {
     setView(targetView);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0B0F1A] flex items-center justify-center">
-        <Loader2 className="text-blue-500 animate-spin" size={48} />
-      </div>
-    );
-  }
-
   const showNav = view !== 'landing' && view !== 'auth' && user;
+
+  const hasActiveJob = (Object.values(jobs) as BackgroundJob[]).some(j => j.status === 'RUNNING');
 
   return (
     <div className="min-h-screen bg-[#0F1117] flex flex-col antialiased">
       {showNav && (
         <Header currentView={teaserTarget || view} setView={handleSetView} plan={plan} onNewResume={() => handleSetView('resume-editor')} />
+      )}
+
+      {hasActiveJob && showNav && (
+        <div className="fixed bottom-6 right-6 z-[200] bg-[#16161E] border border-blue-500/30 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-500">
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+          <span className="text-[10px] font-black text-white uppercase tracking-widest">Background Engine Active</span>
+          <Loader2 size={14} className="text-blue-500 animate-spin" />
+        </div>
       )}
 
       <main className={"flex-1 flex flex-col " + (showNav ? 'pt-20' : '')}>
@@ -305,19 +326,40 @@ function App() {
                 <div className="max-w-[1400px] mx-auto px-10 py-12">
                    <div className="mb-12 flex justify-between items-start">
                     <div>
-                      <h1 className="text-4xl font-bold text-white mb-2">System Status: <span className="text-blue-500">Authenticated</span></h1>
+                      <h1 className="text-4xl font-bold text-white mb-2">Market Standing: <span className="text-blue-500">{currentAnalysis ? currentAnalysis.overallScore : '---'}</span></h1>
                       <p className="text-slate-500 font-medium">Profile Integrity: Verified | <span className="text-xs uppercase tracking-widest">{plan}</span></p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-16">
-                     <DashboardWidget label="Signal Factory" value="Open Console" onClick={() => handleSetView('transformation-factory')} />
-                     <DashboardWidget label="Applications" value="Open Engine" onClick={() => handleSetView('applications')} />
-                     <DashboardWidget label="Intelligence" value="Open Outlook" onClick={() => handleSetView('career-intelligence')} />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                    <DashboardWidget label="Market Fit" value={currentAnalysis?.foundation.marketReadiness || '---'} status="neutral" onClick={() => handleSetView('full-review')} />
+                    <DashboardWidget label="Strengths" value={currentAnalysis?.foundation.strengthsSnapshot.length || '---'} status="good" onClick={() => handleSetView('full-review')} />
+                    <DashboardWidget label="ATS Shield" value={currentAnalysis?.foundation.atsShield || '---'} status="good" onClick={() => handleSetView('full-review')} />
+                    <DashboardWidget label="Readiness" value={currentAnalysis ? `${currentAnalysis.overallScore}%` : '---'} status={currentAnalysis ? (currentAnalysis.overallScore > 80 ? 'good' : 'needs-work') : 'neutral'} onClick={() => handleSetView('full-review')} />
+                  </div>
+
+                  <div className="mb-16">
+                    <RealityCheckDetail onStart={() => handleSetView('ai-review')} />
+                  </div>
+
+                  <div className="space-y-6">
+                    <h3 className="text-white font-bold text-xl uppercase tracking-tight ml-2">Quick Actions</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      {QUICK_ACTIONS.map(action => (
+                        <ActionCard key={action.id} data={action} onClick={() => { if(action.id === 'new') handleSetView('resume-editor'); if(action.id === 'review') handleSetView('ai-review'); }} />
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
-              {view === 'transformation-factory' && <TransformationFactory plan={plan} />}
-              {view === 'applications' && <ApplicationsView plan={plan} />}
+              {view === 'transformation-factory' && (
+                <TransformationFactory 
+                  plan={plan} 
+                  profile={profile} 
+                  onUpdateProfile={(p) => setProfile(p)} 
+                />
+              )}
+              {view === 'applications' && <ApplicationsView plan={plan} profile={profile} />}
               {view === 'ai-review' && <AIReviewView plan={plan} onResult={(r) => { handleSetView('full-review'); }} onUpload={(t) => {}} pendingResumeText={pendingResumeText} onUpgrade={function() { handleSetView('pricing'); }} onStartScratch={() => handleSetView('resume-editor')} activeJobs={jobs} dispatchJob={dispatchJob} />}
               {view === 'full-review' && <FullReviewView result={currentAnalysis} plan={plan} onUpgrade={function() { handleSetView('pricing'); }} onRebuildRequest={(id) => handleSetView('rebuild-standalone')} setView={handleSetView} />}
               {view === 'career-intelligence' && <CareerIntelligenceView analysisResult={currentAnalysis} resumeText={currentAnalysis && currentAnalysis.resumeText ? currentAnalysis.resumeText : ''} plan={plan} setView={handleSetView} activeJobs={jobs} dispatchJob={dispatchJob} />}
