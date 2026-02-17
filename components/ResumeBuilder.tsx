@@ -1,8 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Trash2, Briefcase, GraduationCap, Wrench, Save, 
-  PlusCircle, Mail, Phone, MapPin, Linkedin, Pencil, 
+import * as React from 'react';
+import { useState, useEffect } from 'react';
+
+import {
+  Plus, Trash2, Briefcase, GraduationCap, Wrench, Save,
+  PlusCircle, Mail, Phone, MapPin, Linkedin, Pencil,
   X, Target, Award, Users, FlaskConical, BookOpen, FolderOpen,
   Layout,
   ArrowLeft,
@@ -61,7 +63,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
               id: 'exp-sec',
               type: 'experience' as SectionType,
               title: 'Work Experience',
-              items: version.data.experience.map((e, idx) => ({
+              items: version.data.experience.map((e: any, idx: number) => ({
                 id: `e-${idx}`,
                 title: e.title,
                 subtitle: e.organization,
@@ -74,7 +76,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
               id: 'edu-sec',
               type: 'education' as SectionType,
               title: 'Education',
-              items: version.data.education.map((e, idx) => ({
+              items: version.data.education.map((e: any, idx: number) => ({
                 id: `ed-${idx}`,
                 title: e.degree,
                 subtitle: e.institution,
@@ -86,7 +88,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
               id: 'proj-sec',
               type: 'projects' as SectionType,
               title: 'Key Projects',
-              items: version.data.projects.map((p, idx) => ({
+              items: version.data.projects.map((p: any, idx: number) => ({
                 id: `p-${idx}`,
                 title: p.name,
                 subtitle: p.description,
@@ -113,7 +115,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
             id: 'exp-sec',
             type: 'experience' as SectionType,
             title: 'Work Experience',
-            items: preloadedData.experience.map((e, idx) => ({
+            items: preloadedData.experience.map((e: any, idx: number) => ({
               id: `e-${idx}`,
               title: e.title,
               subtitle: e.organization,
@@ -126,7 +128,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
             id: 'edu-sec',
             type: 'education' as SectionType,
             title: 'Education',
-            items: preloadedData.education.map((e, idx) => ({
+            items: preloadedData.education.map((e: any, idx: number) => ({
               id: `ed-${idx}`,
               title: e.degree,
               subtitle: e.institution,
@@ -138,7 +140,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
             id: 'proj-sec',
             type: 'projects' as SectionType,
             title: 'Key Projects',
-            items: preloadedData.projects.map((p, idx) => ({
+            items: preloadedData.projects.map((p: any, idx: number) => ({
               id: `p-${idx}`,
               title: p.name,
               subtitle: p.description,
@@ -182,8 +184,8 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
       ...prev,
       sections: prev.sections.map(s => s.id === sectionId ? {
         ...s,
-        items: s.items.find(i => i.id === item.id) 
-          ? s.items.map(i => i.id === item.id ? item : i) 
+        items: s.items.find(i => i.id === item.id)
+          ? s.items.map(i => i.id === item.id ? item : i)
           : [...s.items, item]
       } : s)
     }));
@@ -197,7 +199,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
       const candidateName = data.contact.fullName || 'Resume';
       // Strip original title to prevent branding in headers
       const styles = document.head.innerHTML.replace(/<title>.*?<\/title>/g, '');
-      
+
       printWindow.document.write(`
         <html>
           <head>
@@ -230,7 +232,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
 
   const handleCommitToHistory = () => {
     if (!onSaveManual) return;
-    
+
     // Map current editor state to the history structured schema
     const structured: StructuredResume = {
       contact: {
@@ -278,7 +280,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
             <h2 className="text-2xl font-bold text-white tracking-tight">Editor</h2>
           </div>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={handleDownload}
               className="p-2 text-slate-400 hover:text-white transition-colors border border-[#2D313D] rounded-lg"
               title="Download PDF"
@@ -286,7 +288,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
               <Download size={16} />
             </button>
             {!groupId && (
-              <button 
+              <button
                 onClick={handleCommitToHistory}
                 className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-blue-500 shadow-lg shadow-blue-900/20 transition-all flex items-center gap-2"
               >
@@ -370,8 +372,8 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
         ))}
 
         <div className="pt-4">
-          <button 
-            onClick={() => setShowSectionModal(true)} 
+          <button
+            onClick={() => setShowSectionModal(true)}
             className="w-full py-5 border-2 border-dashed border-blue-500/20 rounded-2xl text-blue-400 hover:text-white hover:border-blue-500 transition-all font-bold text-sm bg-blue-500/5 flex flex-col items-center gap-2 group"
           >
             <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-all">
@@ -436,7 +438,7 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
             </div>
             <div className="grid grid-cols-2 gap-4">
               {SECTION_TYPES.map(cfg => (
-                <button 
+                <button
                   key={cfg.type}
                   onClick={() => addSection(cfg.type)}
                   className="flex items-start gap-4 p-5 bg-[#0F1117] rounded-2xl border border-[#2D313D] hover:border-blue-500 hover:bg-blue-500/5 transition-all text-left group"
@@ -490,12 +492,12 @@ export const ResumeBuilder: React.FC<ResumeBuilderProps> = ({ plan, groupId, ver
             </div>
             <div className="p-6 bg-[#1A1D26] border-t border-[#2D313D] flex justify-end gap-4">
               <button onClick={() => setEditingItem(null)} className="px-6 py-2 text-slate-500 font-bold hover:text-white transition-colors">Discard</button>
-              <button 
-                onClick={() => { 
+              <button
+                onClick={() => {
                   const sectionId = editingItem.sectionId;
                   const newItem = editingItem.item || { id: crypto.randomUUID(), title: '' };
                   saveItem(sectionId, { ...newItem, id: newItem.id || crypto.randomUUID() });
-                }} 
+                }}
                 className="px-10 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-900/20 hover:bg-blue-500 transition-all"
               >
                 Apply Entry

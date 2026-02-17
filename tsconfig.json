@@ -3,12 +3,22 @@
     "target": "ESNext",
     "module": "ESNext",
     "jsx": "react-jsx",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"]
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ]
   },
-  "include": ["**/*.ts", "**/*.tsx"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "backend"
+  ]
 }

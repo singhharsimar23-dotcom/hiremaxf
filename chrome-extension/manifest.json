@@ -1,0 +1,52 @@
+{
+    "manifest_version": 3,
+    "name": "HireMax Execution Engine",
+    "version": "1.0.0",
+    "description": "Sovereign Executor for HireMax. Context-aware job application filler.",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage",
+        "webNavigation"
+    ],
+    "host_permissions": [
+        "https://*.supabase.co/*",
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "utils/dom-hasher.js",
+                "content.js",
+                "dist/overlay/overlay.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "dist/overlay/overlay.css"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "action": {
+        "default_popup": "dist/popup/index.html",
+        "default_title": "HireMax Execution"
+    },
+    "externally_connectable": {
+        "matches": [
+            "http://localhost:3000/*",
+            "https://ssuknybhzcuusjardsve.supabase.co/*"
+        ]
+    }
+}

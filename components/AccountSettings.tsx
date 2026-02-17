@@ -1,18 +1,30 @@
 
 import React, { useState } from 'react';
 import { Settings, User, Mail, Lock, Bell, Shield, ArrowRight, Save, CheckCircle2 } from 'lucide-react';
-import { UserPlan } from '../types';
+import { UserPlan, UserProfile } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface AccountSettingsProps {
   plan: UserPlan;
+  profile?: UserProfile | null;
 }
 
-export const AccountSettings: React.FC<AccountSettingsProps> = ({ plan }) => {
+export const AccountSettings: React.FC<AccountSettingsProps> = ({ plan, profile }) => {
   const [saved, setSaved] = useState(false);
-  
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const [fullName, setFullName] = useState(profile?.full_name || '');
+
+  const handleSave = async () => {
+    if (!profile) return;
+    try {
+      await supabase.from('profiles').update({
+        full_name: fullName,
+        updated_at: new Date().toISOString()
+      }).eq('id', profile.id);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      console.error('Failed to save settings:', e);
+    }
   };
 
   return (
@@ -31,14 +43,32 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({ plan }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-2">
               <label className="input-label">Full Name</label>
-              <input defaultValue="John Doe" className="w-full bg-[#0D0D12] border border-[#1D1D26] rounded-xl p-4 text-white focus:border-blue-500 outline-none transition-all" />
+              <input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full bg-[#0D0D12] border border-[#1D1D26] rounded-xl p-4 text-white focus:border-blue-500 outline-none transition-all"
+              />
             </div>
             <div className="space-y-2">
               <label className="input-label">Email Address</label>
-              <input readOnly defaultValue="john.doe@example.com" className="w-full bg-[#0D0D12] border border-[#1D1D26] rounded-xl p-4 text-slate-500 cursor-not-allowed outline-none" />
+              <input readOnly value={profile?.email || ''} className="w-full bg-[#0D0D12] border border-[#1D1D26] rounded-xl p-4 text-slate-500 cursor-not-allowed outline-none" />
               <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mt-1">Contact support to change email</p>
             </div>
           </div>
+
+          {/* Connected Providers Display */}
+          {profile?.connected_providers && profile.connected_providers.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-white/5">
+              <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-3">Linked Auth Providers</p>
+              <div className="flex gap-3">
+                {profile.connected_providers.map(p => (
+                  <span key={p} className="bg-blue-600/10 border border-blue-600/20 text-blue-400 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl">
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="bg-[#16161E] border border-[#1D1D26] rounded-[2.5rem] p-10">
@@ -86,7 +116,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({ plan }) => {
               <CheckCircle2 size={16} /> Changes Saved
             </div>
           )}
-          <button 
+          <button
             onClick={handleSave}
             className="bg-blue-600 hover:bg-blue-500 text-white font-black py-4 px-12 rounded-2xl transition-all uppercase tracking-[0.2em] text-[10px] shadow-xl shadow-blue-900/20 flex items-center gap-3"
           >

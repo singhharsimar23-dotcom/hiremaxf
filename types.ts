@@ -3,13 +3,13 @@ export type UserPlan = 'Starter' | 'Market Verdict' | 'Career Pro' | 'Career Eli
 
 export type IngestionMode = 'oauth' | 'public_profile' | 'manual_artifact';
 
-export type AppView = 
-  | 'landing' | 'auth' | 'dashboard' | 'ai-review' | 'full-review' 
-  | 'rebuild' | 'rebuild-standalone' | 'career-intelligence' 
-  | 'transformation-factory' | 'applications' | 'pricing' 
+export type AppView =
+  | 'landing' | 'auth' | 'dashboard' | 'ai-review' | 'full-review'
+  | 'rebuild' | 'rebuild-standalone' | 'career-intelligence' | 'profile'
+  | 'applications' | 'pricing' | 'auth-bridge'
   | 'settings' | 'billing' | 'faq' | 'contact' | 'history' | 'resume-editor'
   | 'signal-hub' | 'recruiter-scan' | 'rejection-model' | 'role-saturation'
-  | 'skill-radar' | 'longevity-estimate' | 'admin-ops';
+  | 'skill-radar' | 'longevity-estimate' | 'admin-ops' | 'preview' | 'admin';
 
 export type RoleTrack = 'AI_PRODUCTION' | 'STARTUP_ENG' | 'BIG_TECH' | 'RESEARCH_ACADEMIC' | 'FINTECH_INFRA';
 
@@ -101,6 +101,7 @@ export interface UserProfile {
   id: string;
   email: string;
   full_name: string;
+  avatar_url?: string;
   plan: UserPlan;
   credits: number;
   domain: PrimaryDomain;
@@ -137,17 +138,28 @@ export interface DiagnosticResult {
   roleTrack?: RoleTrack;
   resumeText: string;
   overallScore: number;
-  foundation: { atsShield: string; readability: string; marketReadiness: 'Low' | 'Medium' | 'High'; strengthsSnapshot: string[]; };
+  marketReadinessLabel?: 'Low' | 'Medium' | 'High';
+  foundation?: { atsShield: string; readability: string; marketReadiness: 'Low' | 'Medium' | 'High'; strengthsSnapshot: string[]; };
   eightPoints: EightPointItem[];
-  recruiterScan: any[];
-  rejectionReasons: any[];
-  roleSaturation: string;
-  skillRadar: any[];
-  longevityEstimate: any;
+  recruiterScan?: any[];
+  rejectionReasons?: any[];
+  roleSaturation?: string;
+  skillRadar?: any[];
+  longevityEstimate?: any;
 }
 
 export interface ResumeGroup { id: string; name: string; versions: ResumeVersion[]; }
-export interface ResumeVersion { versionId: string; type: 'original' | 'optimized'; linkedAnalysisId?: string; createdAt: string; updatedAt: string; templateId: string; data: any; }
+export interface ResumeVersion {
+  versionId: string;
+  type: 'original' | 'optimized';
+  linkedAnalysisId?: string;
+  createdAt: string;
+  updatedAt: string;
+  templateId: string;
+  data: any;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  error_reason?: string;
+}
 
 export interface ActionCardData {
   id: string;
@@ -243,4 +255,90 @@ export interface ResumeData {
   };
   summary: string;
   sections: ResumeSection[];
+}
+
+// --- EXECUTION ENGINE TYPES ---
+
+export type ExecutionState = 'IDENTIFIED' | 'KILL_ZONE' | 'NOT_READY' | 'NOT_MATCH' | 'SUBMITTED' | 'UNDER_REVIEW' | 'INTERVIEW' | 'REJECTED';
+
+export interface KillZoneAnalysis {
+  inKillZone: boolean;
+  percentile: number;
+  estimatedCallbackRate: number;
+  confidence: number;
+  matchBreakdown: {
+    skillsMatch: number | string;
+    experienceMatch: boolean;
+    companyTierMatch: boolean;
+    githubScore: number;
+    minorGaps: { label: string; severity?: string; impact?: number }[] | string[];
+  };
+  competitionAnalysis: {
+    estimatedApplicants: number;
+    yourRank: string;
+    competitiveAdvantage: string[];
+  };
+}
+
+export interface ImprovementStep {
+  stepNumber: number;
+  action: string;
+  description: string;
+  effort: number;
+  impact: number;
+  resources?: string[];
+  verification?: string;
+  status: 'not_started' | 'in_progress' | 'completed';
+  phase?: string;
+}
+
+export interface ImprovementPlan {
+  totalEffort: number;
+  estimatedTimeline: string;
+  expectedCallbackRateAfter?: number;
+  target_percentile?: number;
+  roadmap?: {
+    phase: number;
+    title: string;
+    duration: string;
+    effort: number;
+    steps: ImprovementStep[];
+  }[];
+  steps?: ImprovementStep[]; // Flattened alternative
+}
+
+export interface ApplicationTracking {
+  timeline: {
+    id: string;
+    timestamp: string;
+    label: string;
+    description: string;
+    type: 'system' | 'outcome';
+    verified: boolean;
+  }[];
+  predictions: {
+    expectedOutcomeDate: string;
+    mostLikelyOutcome: string;
+    outcomeConfidence: number;
+  };
+}
+
+export interface JobOpportunity {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  type: string;
+  salary: string;
+  posted_at: string;
+  description_snippet: string;
+  match_confidence: number;
+  company_state: string;
+  discovery_method: string;
+  confidence_tier: string;
+  freshness_window: string;
+  source_ats: string;
+  state?: ExecutionState;
+  analysis?: KillZoneAnalysis;
+  tracking?: ApplicationTracking;
 }

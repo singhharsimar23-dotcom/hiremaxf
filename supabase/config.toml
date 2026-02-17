@@ -1,0 +1,13 @@
+[functions.hiring-engine]
+verify_jwt = false
+[functions.materialize-job]
+verify_jwt = false
+[functions.execution-engine]
+verify_jwt = false
+
+[functions.generate-diagnostic]
+verify_jwt = false
+[functions.generate-rebuild]
+verify_jwt = false
+[functions.generate-outlook]
+verify_jwt = false

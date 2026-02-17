@@ -1,17 +1,31 @@
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import { GoogleGenerativeAI } from 'npm:@google/generative-ai'
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.34.0';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 export async function generateRebuild(req: Request) {
-  const supabase = createClient(
-    process.env.SUPABASE_URL ?? '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
-  );
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
 
   try {
-    const { user_id, resume_id, targetRole, roleTrack, sourceText } = await req.json();
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const { user_id, resume_id, targetRole, roleTrack, sourceText } = await req.json()
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      throw new Error('Missing GEMINI_API_KEY environment variable')
+    }
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+
     const prompt = `Architect a market-aligned resume for the "${roleTrack}" track.
     TARGET ROLE: ${targetRole}
     SOURCE CONTENT: ${sourceText}
@@ -27,15 +41,30 @@ export async function generateRebuild(req: Request) {
         "skills": { "languages": string[], "frameworks": string[], "tools": string[], "specializations": string[] },
         "leadership": [{ "role": string, "description": string }]
       }
-    }`;
+    }`
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    })
 
-    const results = JSON.parse(response.text || '{}');
+    const responseText = result.response.text()
+    const results = JSON.parse(responseText || '{}')
+
+    // Ensure parent resume exists
+    const { error: parentError } = await supabase
+      .from('resumes')
+      .upsert({
+        id: resume_id,
+        user_id,
+        name: `Rebuild - ${targetRole}`,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'id', ignoreDuplicates: true })
+
+    if (parentError) throw parentError
+
+    // Robust extraction: Handle various potential AI response structures
+    const resumeData = results.newResume || results.resume || results;
 
     // Create a new version in the database
     const { data: version, error } = await supabase
@@ -43,15 +72,23 @@ export async function generateRebuild(req: Request) {
       .insert({
         resume_id,
         version_type: 'optimized',
-        data: results.newResume
+        data: resumeData
       })
       .select()
-      .single();
+      .single()
 
-    if (error) throw error;
+    if (error) throw error
 
-    return new Response(JSON.stringify(version), { status: 200 });
+    return new Response(JSON.stringify(version), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: err.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    })
   }
 }
+
+Deno.serve(generateRebuild)

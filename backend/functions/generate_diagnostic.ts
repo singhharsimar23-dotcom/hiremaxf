@@ -1,17 +1,31 @@
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import { GoogleGenerativeAI } from 'npm:@google/generative-ai'
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { GoogleGenAI } from 'https://esm.sh/@google/genai@1.34.0';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 export async function generateDiagnostic(req: Request) {
-  const supabase = createClient(
-    process.env.SUPABASE_URL ?? '',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
-  );
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
 
   try {
-    const { user_id, targetRole, roleTrack, resumeText } = await req.json();
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const { user_id, targetRole, roleTrack, resumeText } = await req.json()
+
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      throw new Error('Missing GEMINI_API_KEY environment variable')
+    }
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+
     const prompt = `Analyze this resume for the role of "${targetRole}" within the "${roleTrack}" market track.
     Return a JSON object in this exact structure:
     {
@@ -21,15 +35,15 @@ export async function generateDiagnostic(req: Request) {
         { "id": string, "name": string, "score": number, "explanation": string, "riskHint": string }
       ]
     }
-    RESUME TEXT: ${resumeText}`;
+    RESUME TEXT: ${resumeText}`
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    });
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    })
 
-    const results = JSON.parse(response.text || '{}');
+    const responseText = result.response.text()
+    const results = JSON.parse(responseText || '{}')
 
     // Persist to DB
     const { data: analysis, error } = await supabase
@@ -42,12 +56,20 @@ export async function generateDiagnostic(req: Request) {
         results_json: results
       })
       .select()
-      .single();
+      .single()
 
-    if (error) throw error;
+    if (error) throw error
 
-    return new Response(JSON.stringify(analysis), { status: 200 });
+    return new Response(JSON.stringify(analysis), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    })
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    return new Response(JSON.stringify({ error: err.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    })
   }
 }
+
+Deno.serve(generateDiagnostic)

@@ -1,0 +1,254 @@
+[
+    {
+        "id": "e0e5746a-d568-442f-8cdf-1cead10d57d6",
+        "company_name": "Monzo Bank",
+        "domain": "monzo.com",
+        "careers_url": "https://monzo.com/careers"
+    },
+    {
+        "id": "e359ef12-7989-45bb-b0ef-0628ef913e2d",
+        "company_name": "Starling Bank",
+        "domain": "starlingbank.com",
+        "careers_url": "https://www.starlingbank.com/careers/"
+    },
+    {
+        "id": "6c16c19b-6e14-45ce-b876-807480848563",
+        "company_name": "Deliveroo",
+        "domain": "deliveroo.co.uk",
+        "careers_url": "https://deliveroo.co.uk/careers"
+    },
+    {
+        "id": "8afe9e82-a329-4ff2-b7fe-6a0c0d80f10b",
+        "company_name": "Revolut",
+        "domain": "revolut.com",
+        "careers_url": "https://www.revolut.com/careers"
+    },
+    {
+        "id": "164398c5-842c-4959-a4d6-1be570bd4613",
+        "company_name": "Checkout.com",
+        "domain": "checkout.com",
+        "careers_url": "https://www.checkout.com/careers"
+    },
+    {
+        "id": "5c108e13-0a08-479c-8dbe-4122ecb269b0",
+        "company_name": "Bloom & Wild",
+        "domain": "bloomandwild.com",
+        "careers_url": "https://bloomandwild.com/careers"
+    },
+    {
+        "id": "69948d30-9986-4c1b-8e9b-5a8c18d98d2c",
+        "company_name": "Gymshark",
+        "domain": "gymshark.com",
+        "careers_url": "https://central.gymshark.com/careers/"
+    },
+    {
+        "id": "5e90fbea-a601-44d9-9f39-bc4e577b7e51",
+        "company_name": "OakNorth Bank",
+        "domain": "oaknorth.co.uk",
+        "careers_url": "https://www.oaknorth.co.uk/careers/"
+    },
+    {
+        "id": "814290c0-5fb2-4262-a628-058a169bf057",
+        "company_name": "Tide",
+        "domain": "tide.co",
+        "careers_url": "https://www.tide.co/careers/"
+    },
+    {
+        "id": "535fbcb6-08c7-4272-8474-7d389a1196b2",
+        "company_name": "Birdie",
+        "domain": "birdie.care",
+        "careers_url": "https://www.birdie.care/careers"
+    },
+    {
+        "id": "4735f1ec-6f5e-48f7-a876-5ff295587c31",
+        "company_name": "Zopa",
+        "domain": "zopa.com",
+        "careers_url": "https://www.zopa.com/careers"
+    },
+    {
+        "id": "91d3b576-53c5-40b8-821b-30262c32f97b",
+        "company_name": "Graphcore",
+        "domain": "graphcore.ai",
+        "careers_url": "https://www.graphcore.ai/careers"
+    },
+    {
+        "id": "9a060244-51f4-439c-b4d3-021980cc74a0",
+        "company_name": "TrueLayer",
+        "domain": "truelayer.com",
+        "careers_url": "https://truelayer.com/careers"
+    },
+    {
+        "id": "e1797810-f9f8-4e0c-85e4-c2b7166bcfe1",
+        "company_name": "Robin AI",
+        "domain": "robinai.com",
+        "careers_url": "https://www.robinai.com/careers"
+    },
+    {
+        "id": "41a35cad-86e5-46cb-b640-0ba44345866b",
+        "company_name": "Peppy Health",
+        "domain": "peppy.health",
+        "careers_url": "https://peppy.health/careers/"
+    },
+    {
+        "id": "e23a5871-a6f6-42c7-b7ca-2ad0f5f3e16a",
+        "company_name": "Lottie",
+        "domain": "lottie.org",
+        "careers_url": "https://lottie.org/careers/"
+    },
+    {
+        "id": "5f37e003-6cdf-4259-99ea-96c7ca2bb6e2",
+        "company_name": "Sano Genetics",
+        "domain": "sanogenetics.com",
+        "careers_url": "https://sanogenetics.com/careers"
+    },
+    {
+        "id": "7966bf08-8af3-4532-9e4f-bd81d881668f",
+        "company_name": "Hyperexponential",
+        "domain": "hyperexponential.com",
+        "careers_url": "https://hyperexponential.com/careers"
+    },
+    {
+        "id": "d8d707ed-1478-46ee-9bfd-9b773e6808c0",
+        "company_name": "Cohere",
+        "domain": "cohere.com",
+        "careers_url": "https://cohere.com/careers"
+    },
+    {
+        "id": "b688c327-7206-44ff-b98a-735ade7825e0",
+        "company_name": "Neo Financial",
+        "domain": "neofinancial.com",
+        "careers_url": "https://www.neofinancial.com/careers"
+    },
+    {
+        "id": "4fa95ab8-506f-4d19-b0bf-dccf5cd6d2d3",
+        "company_name": "Hopper",
+        "domain": "hopper.com",
+        "careers_url": "https://www.hopper.com/careers"
+    },
+    {
+        "id": "9bdcc898-73b5-4606-bee7-cbc1436787de",
+        "company_name": "Clio",
+        "domain": "clio.com",
+        "careers_url": "https://www.clio.com/careers/"
+    },
+    {
+        "id": "a3c47c5c-2f23-4675-98fa-18e628140931",
+        "company_name": "AlayaCare",
+        "domain": "alayacare.com",
+        "careers_url": "https://www.alayacare.com/careers"
+    },
+    {
+        "id": "acb0aa98-2044-45c3-9296-48407a9fc726",
+        "company_name": "Float",
+        "domain": "floatcard.com",
+        "careers_url": "https://floatcard.com/careers/"
+    },
+    {
+        "id": "9d75741d-0bdc-4b19-9c57-d0f1c7ed9c68",
+        "company_name": "Wealthsimple",
+        "domain": "wealthsimple.com",
+        "careers_url": "https://www.wealthsimple.com/en-ca/careers"
+    },
+    {
+        "id": "98c0e0fe-7599-4762-98df-76a4d5211855",
+        "company_name": "Mistral AI",
+        "domain": "mistral.ai",
+        "careers_url": "https://mistral.ai/careers/"
+    },
+    {
+        "id": "0a9b3920-5e8e-49ba-a71f-c1c1e4c43306",
+        "company_name": "Neko Health",
+        "domain": "nekohealth.com",
+        "careers_url": "https://nekohealth.com/careers"
+    },
+    {
+        "id": "84fd705d-184b-431a-9064-02db1e5891bb",
+        "company_name": "Enpal",
+        "domain": "enpal.de",
+        "careers_url": "https://www.enpal.de/karriere"
+    },
+    {
+        "id": "29156d38-ad9e-42f4-abdf-fccc41f65e68",
+        "company_name": "Plan A",
+        "domain": "plana.earth",
+        "careers_url": "https://plana.earth/careers"
+    },
+    {
+        "id": "feaa14d1-e106-40de-93ce-8ff3526315d0",
+        "company_name": "Northvolt",
+        "domain": "northvolt.com",
+        "careers_url": "https://northvolt.com/career"
+    },
+    {
+        "id": "83bcb44d-6b17-44e2-a2cd-5a7c90d9d42c",
+        "company_name": "Atlar",
+        "domain": "atlar.com",
+        "careers_url": "https://atlar.com/careers"
+    },
+    {
+        "id": "e031d97f-80a1-4f31-9bd1-9d9363e94b9b",
+        "company_name": "Picnic",
+        "domain": "picnic.app",
+        "careers_url": "https://picnic.app/careers"
+    },
+    {
+        "id": "2e6585ce-7ae9-4914-bfec-5aab172d1c38",
+        "company_name": "Celonis",
+        "domain": "celonis.com",
+        "careers_url": "https://www.celonis.com/careers"
+    },
+    {
+        "id": "1eddb8da-fce2-4266-ac99-b6c63eb73dd3",
+        "company_name": "Back Market",
+        "domain": "backmarket.com",
+        "careers_url": "https://www.backmarket.com/careers"
+    },
+    {
+        "id": "4bd4732d-547e-4c4a-8f0d-e7a36b4afea3",
+        "company_name": "Doctolib",
+        "domain": "doctolib.fr",
+        "careers_url": "https://about.doctolib.fr/careers/"
+    },
+    {
+        "id": "7b0749c4-119b-4043-b013-c0dc927054a4",
+        "company_name": "Klarna",
+        "domain": "klarna.com",
+        "careers_url": "https://www.klarna.com/international/careers/"
+    },
+    {
+        "id": "5ef57ed6-09f8-4cfd-ba86-71e5432102af",
+        "company_name": "Bolt",
+        "domain": "bolt.eu",
+        "careers_url": "https://bolt.eu/en/careers/"
+    },
+    {
+        "id": "082ddc78-a2d7-4536-bd7a-0367a7ddd3e6",
+        "company_name": "Wolt",
+        "domain": "wolt.com",
+        "careers_url": "https://wolt.com/en/careers"
+    },
+    {
+        "id": "adacfb76-3962-4d7a-b8ee-2d8372ff2c79",
+        "company_name": "BlaBlaCar",
+        "domain": "blablacar.com",
+        "careers_url": "https://www.blablacar.com/careers"
+    },
+    {
+        "id": "d465de15-ef5b-47cf-8816-5d0ee94f6a8f",
+        "company_name": "DeepL",
+        "domain": "deepl.com",
+        "careers_url": "https://www.deepl.com/en/careers"
+    },
+    {
+        "id": "89c9b03b-6090-488f-ba74-10f71ef7f2a5",
+        "company_name": "Adyen",
+        "domain": "adyen.com",
+        "careers_url": "https://www.adyen.com/careers"
+    },
+    {
+        "id": "05517e73-f9ec-4cf7-af65-7836798cc571",
+        "company_name": "Spotify",
+        "domain": "spotify.com",
+        "careers_url": "https://www.lifeatspotify.com/jobs"
+    }
+]
