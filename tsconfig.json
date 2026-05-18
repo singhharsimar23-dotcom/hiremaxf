@@ -1,24 +1,78 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "ESNext",
-    "jsx": "react-jsx",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
+    "useDefineForClassFields": true,
     "lib": [
       "DOM",
       "DOM.Iterable",
       "ESNext"
-    ]
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": [
+      "@cloudflare/workers-types"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@infra/workers/*": [
+        "./infra/workers/*"
+      ],
+      "@infra/adapters/*": [
+        "./infra/adapters/*"
+      ],
+      "@infra/connectors/*": [
+        "./infra/connectors/*"
+      ],
+      "@core/shared/*": [
+        "./core/shared/*"
+      ],
+      "@core/ingestion-engine/*": [
+        "./core/ingestion-engine/*"
+      ],
+      "@apps/*": [
+        "./apps/*"
+      ],
+      "@core/*": [
+        "./core/*"
+      ],
+      "@infra/*": [
+        "./infra/*"
+      ],
+      "@services/*": [
+        "./services/*"
+      ],
+      "@data/*": [
+        "./data/*"
+      ],
+      "@/*": [
+        "./apps/web/*"
+      ]
+    }
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx"
+    ".",
+    "apps",
+    "core",
+    "infra",
+    "services",
+    "data",
+    "scripts",
+    "worker"
   ],
   "exclude": [
-    "backend"
+    "node_modules",
+    "dist",
+    "archive"
   ]
 }

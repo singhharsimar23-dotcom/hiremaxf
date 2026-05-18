@@ -9,6 +9,9 @@ Reconstruction of runtime failures, logical traps, and observability blind spots
 | **SSRF Guard Rejection** | `worker-external` | Worker returns 400; "Internal or private nodes restricted" | Breaks Golden Path (Securely) |
 | **Spoof Guard Rejection** | `worker-external` | `integrity_events` log created; Worker returns 400 | Degrades UX (User input error) |
 | **Unconverged session** | `snapshot-builder` | 202 Accepted; "Aborting build to prevent phantom state" | Logical Safe-Abort |
+| **Ghost Ingestion** | `ats-engine-ultimate` | Returns 200 SUCCESS but inserts 0 raw docs | Mapping/Filter Logic Error |
+| **Silent Saturation** | `raw_job_documents` | 23505 (Unique Constraint) ignored; inserted count stays 0 | Data Saturation (Deduplication) |
+| **Health Stagnation** | `system-health-monitor` | Total health < 0.3; causes permanent 503 pause loop | Feedback Loop Failure |
 | **Deno Import Error** | Local IDE / Deployment | Linting errors regarding `esm.sh` or `deno.land` | Build/Maintenance Issue |
 | **OAuth Timeout** | Remote API | Command status remains `processing` indefinitely | Degrades UX (Timed out) |
 

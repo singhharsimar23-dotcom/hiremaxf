@@ -1,0 +1,13 @@
+{
+  "name": "adapter-layer",
+  "version": "1.5.0",
+  "status": "active",
+  "owner": "data-team",
+  "purpose": "38 thin fetch+parse wrappers bridging connectors to the ingestion engine",
+  "interface": "interface.ts",
+  "registry": "registry.ts",
+  "total_adapters": 34,
+  "depends_on": ["infra/connectors", "core/ingestion-engine", "infra/workers/types"],
+  "forbidden_dependencies": ["apps/*", "services/*"],
+  "execution_mode": "on-demand"
+}

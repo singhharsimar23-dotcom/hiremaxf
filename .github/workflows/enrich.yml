@@ -1,0 +1,46 @@
+name: Trigger Enrichment
+on:
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Enrichment Worker
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.CF_WORKER_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.WORKER_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"group":"enrichment"}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response: $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Enrichment worker returned $HTTP_CODE"
+            exit 1
+          fi
+
+          SUCCEEDED=$(echo "$BODY" | jq -r '.stats.succeeded // 0')
+          PROCESSED=$(echo "$BODY" | jq -r '.stats.processed // 0')
+          
+          if [ "$PROCESSED" -gt 0 ] && [ "$SUCCEEDED" -eq 0 ]; then
+            echo "❌ Pipeline processed jobs but failed all of them"
+            exit 1
+          fi
+
+          echo "✅ Enrichment triggered — stats: $BODY"
+
+      - name: Log Next Deployment
+        run: |
+          MIN=$(date +%M | sed 's/^0*//')
+          [ -z "$MIN" ] && MIN=0
+          if [ "$MIN" -lt 5 ]; then
+            REMAIN=$((5 - MIN))
+          else
+            REMAIN=$((65 - MIN))
+          fi
+          echo "Enrichment complete. Embedding will run in $REMAIN minutes."

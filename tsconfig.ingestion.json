@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "core/ingestion-engine/**/*.ts",
+    "core/shared/**/*.ts",
+    "infra/adapters/**/*.ts",
+    "infra/connectors/**/*.ts",
+    "infra/workers/index.ts",
+    "infra/workers/embedder.ts",
+    "infra/workers/enrichment.ts",
+    "infra/workers/cleaner.ts",
+    "infra/workers/validateSources.ts",
+    "infra/workers/reprocess_failed.ts",
+    "infra/workers/live_trace.ts",
+    "infra/workers/config/**/*.ts",
+    "infra/workers/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "archive",
+    "scripts/**",
+    "infra/workers/scripts/**",
+    "infra/workers/tests/**",
+    "infra/workers/cli/**"
+  ]
+}

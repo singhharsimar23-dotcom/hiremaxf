@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.env*
+.dev.vars*
+.wrangler/
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +25,37 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- HireMax: Architect-enforced ignores --------------------------------------
+# Log files � never commit these
+*.log
+*.log.*
+out*.txt
+output.log
+multi_log.txt
+visibility_output.log
+
+# Test/probe output artifacts
+probe_output*
+test_output*
+final_proof*
+deploy*.log
+deploy*.log.*
+
+# Worker runtime output
+infra/workers/out*.txt
+infra/workers/*.log
+
+# Diagnostic files
+test_alias.ts
+response.json
+gh_*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build/Run Logs
+*.log
+out*.txt
+

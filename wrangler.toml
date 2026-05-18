@@ -1,0 +1,31 @@
+name = "hiremax-ingestion"
+main = "worker/src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "KV_JOBS"
+id = "636ba95ce2d5456f855bcc45b2b92a48"
+
+[vars]
+ENVIRONMENT = "production"
+
+# Secrets — set via: wrangler secret put SECRET_NAME
+# SUPABASE_URL, SUPABASE_SERVICE_KEY, DB_POOLER_URL
+# UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
+# GROQ_API_KEY, GEMINI_API_KEY, TOGETHER_API_KEY
+# RESEND_API_KEY, WORKER_SECRET
+
+[triggers]
+crons = [
+  "*/5 * * * *"     # Triggers index.ts every 5m; internal logic handles 10m/40m/2h/6h/daily offsets
+  # --- For Paid Cloudflare accounts, uncomment below and comment the */5 cron above ---
+  # "*/10 * * * *",   # Every 10 min  — ALPHA + GAMMA ingestion
+  # "40 * * * *",     # 40 min/hr     — Enrichment stub
+  # "0 */2 * * *",    # Every 2 hrs   — Embedding stub
+  # "0 */6 * * *",    # Every 6 hrs   — Signal detector
+  # "0 4 * * *",      # Daily 04:00   — ATS discovery
+  # "0 2 * * *",      # Daily 02:00   — Pattern engine
+  # "0 3 * * *",      # Daily 03:00   — Graveyard audit
+  # "30 3 * * *",     # Daily 03:30   — Archive worker
+  # "45 3 * * *"      # Daily 03:45   — Content purge
+]

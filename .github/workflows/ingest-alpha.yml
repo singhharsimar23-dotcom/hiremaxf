@@ -1,0 +1,30 @@
+name: Trigger ALPHA Ingestion
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Cloudflare Worker — ALPHA
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.CF_WORKER_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.WORKER_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"group":"alpha"}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "Response: $BODY"
+          echo "HTTP Code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Worker returned $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ ALPHA ingestion triggered successfully"

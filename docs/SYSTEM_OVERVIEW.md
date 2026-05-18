@@ -1,51 +1,121 @@
-# System Overview: HireMax Forensic Reconstruction
+# SYSTEM: HireMax
+> Last Updated: 2026-03-11 | Status: **Production-Active**
 
-## 1. Mission Statement
-HireMax is a high-integrity professional identity and career automation engine. It focuses on "Truth-First" identity synthesis, forensic evidence collection, and automated job application execution.
+---
 
-## 2. Repository Structure
-The repository is organized into a frontend (React/Vite) and a backend (Supabase Edge Functions & Postgres).
+## Mission
 
-### Directory Tree
-- `hiremax/` (Root)
-  - `components/`: React UI components.
-    - `profile/`: Sub-components for Identity Engine v2.5.
-  - `supabase/`: Supabase configuration and logic.
-    - `functions/`: Edge Functions (Deno). This is the primary backend logic layer.
-    - `migrations/`: SQL migration files for database schema.
-  - `backend/`: Potential legacy or auxiliary logic, containing original schema drafts and READMEs.
-  - `lib/`: Shared frontend utilities (Supabase client, API wrappers).
-  - `public/`: Static assets.
-  - `docs/`: (New) Authoritative system documentation.
+HireMax is a career intelligence platform that maximizes interview callback probability for job seekers. It ingests job postings from across the internet, runs a deterministic 5-domain scoring model to estimate interview probability for each role, and automates the application process through a Chrome extension.
 
-### Status Categorization
-| Directory | Status | Purpose |
-| :--- | :--- | :--- |
-| `supabase/functions/` | **Active** | Core logic for ingestion, hardening, and building profiles. |
-| `components/` | **Active** | Main UI layer, recently refactored for "Truth-First" UX. |
-| `backend/` | **Experimental/Legacy** | Contains early drafts and some auxiliary scripts. |
-| `lib/` | **Active** | Critical glue code for Supabase and API communication. |
+**The core bet:** Recruiters follow predictable screening heuristics. If you model those heuristics mathematically, you can tell users exactly where to apply and why — before wasting time on bad-fit applications.
 
-## 3. Core Modules
-1. **Identity Engine (v2.5 Hardened)**: Forensic extraction of professional signals from LinkedIn, GitHub, Gmail, and external anchors.
-2. **Search & Apply Engine**: Automated discovery of job pointers and application execution.
-3. **Resume Rebuild**: (Likely Legacy/Phase 1) Analysis and optimization of traditional resume documents.
+---
 
-## 5. File-Level Map (Exhaustive)
+## Core Principle
 
-| Path | Type | Responsibility | Deps/Callers | Path Status |
-| :--- | :--- | :--- | :--- | :--- |
-| `App.tsx` | UI Shell | Global routing and job rehydration. | Entry point. | Golden Path |
-| `components/ProfileView.tsx` | UI | Ingestion orchestration and identity view. | `App.tsx` router. | Golden Path |
-| `supabase/functions/ingest-identity/` | Edge Function | API entry for ingestion; handles sessions. | `ProfileView.tsx`. | Golden Path |
-| `supabase/functions/snapshot-builder/` | Edge Function | profile synthesis and scoring. | Ingestion Workers. | Golden Path |
-| `supabase/functions/worker-external/` | Edge Function | Fetches and validates URL nodes. | `ingest-identity`. | Golden Path |
-| `supabase/functions/worker-linkedin/` | Edge Function | Scrapes authenticated LinkedIn profiles. | `ingest-identity`. | Golden Path |
-| `types.ts` | Config | Authoritative TypeScript interfaces. | Shared across app. | Golden Path |
-| `lib/supabase.ts` | Utility | Shared Supabase client configuration. | All UI components. | Golden Path |
-| `backend/supabase_schema.sql` | Schema | Consolidating SQL for manual deployment. | DB Setup. | Reference |
+**Callback Probability Optimization.**
 
-## 6. Source of Truth
-- **Database**: Supabase Postgres (`public` schema).
-- **Backend**: Supabase Edge Functions.
-- **Frontend**: Vite + React + Tailwind (Standard components).
+Every feature exists to answer one question:
+> *"Given this resume and this job, what is the probability the recruiter calls this person back?"*
+
+This probability is computed deterministically (not by LLM) using five signal domains, then the LLM explains the result in natural language. The numbers come first. The explanation comes second.
+
+---
+
+## System Flow
+
+```
+User Resume
+    │
+    ▼
+[Resume Processing] ──→ profile_snapshots, ml_candidate_embeddings
+    │
+    │                        [Job Ingestion Pipeline]
+    │                               │
+    │              tech-board-scraper ──┐
+    │              job-board-scraper ───┤──→ job_pointers (76k+ rows)
+    │              discovery-scout ─────┤
+    │              mega-scraper ────────┘
+    │
+    ▼
+[Ranking Engine] ── match_jobs_v3() RPC ──→ Scored job list
+    │                decision-engine.ts
+    │
+    ▼
+[Browser Extension] ── Overlay UI ──→ Autofill ATS forms
+    │
+    ▼
+[Application Automation] ── execution-engine ──→ Submission + Telemetry
+    │
+    ▼
+[Telemetry] ── ingestion_logs, integrity_events, discovery_runs
+```
+
+---
+
+## Subsystems
+
+| # | Subsystem | Purpose | Primary Code |
+|---|-----------|---------|-------------|
+| 1 | **Job Ingestion** | Scrape job boards, ATS APIs, and direct company sites | `tech-board-scraper`, `job-board-scraper`, `mega-scraper`, `discovery-scout` |
+| 2 | **Job Database** | Store, deduplicate, and index all job postings | `job_pointers` table, `match_jobs_v3` RPC |
+| 3 | **Ranking Engine** | Score jobs by interview probability using 5 signal domains | `decision-engine.ts`, `hiring-engine`, `match-analyst` |
+| 4 | **Resume Processing** | Parse, embed, and store candidate resume data | `generate-diagnostic`, `snapshot-builder`, `extract-candidate-features` |
+| 5 | **Browser Extension** | Detect ATS forms, show overlay, autofill fields | `chrome-extension/` (content.js, background.js, overlay) |
+| 6 | **Application Automation** | Submit job applications through ATS systems | `execution-engine`, `ats-engine`, `auto-apply` |
+| 7 | **Telemetry** | Record all actions, errors, and application outcomes | `ingestion_logs`, `integrity_events`, `ingest-friction-telemetry` |
+| 8 | **Infrastructure** | Orchestration, governance, scheduling | `governor-reporter`, `discovery-orchestrator`, `job-governor`, `pg_cron` |
+
+---
+
+## External Dependencies
+
+| Dependency | Purpose |
+|-----------|---------|
+| **Supabase** | PostgreSQL database, Auth, Edge Functions, Realtime, Storage |
+| **pgvector** | HNSW vector similarity search for job-resume matching |
+| **Gemini (Google)** | LLM for resume analysis, market outlook, rich answer generation |
+| **Chrome Extension APIs** | `activeTab`, `scripting`, `storage`, `webNavigation`, `contextMenus` |
+| **Jooble API** | External job board API (requires `JOOBLE_API_KEY`) |
+| **Careerjet API** | External job board API (requires `CAREERJET_AFFID`) |
+| **Deno Runtime** | Edge Function execution environment |
+
+---
+
+## Service Tier Map
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    FRONTEND (React/Vite)                │
+│  DashboardView │ CareerIntelligenceView │ ProfileView   │
+│  ExecutionPreviewView │ ApplicationExecutionView        │
+└──────────────────────┬──────────────────────────────────┘
+                       │ supabase.functions.invoke()
+┌──────────────────────▼──────────────────────────────────┐
+│              EDGE FUNCTIONS (Deno / Supabase)           │
+│  hiring-engine │ generate-diagnostic │ generate-outlook │
+│  execution-engine │ match-analyst │ resume-bandit        │
+└──────────────────────┬──────────────────────────────────┘
+                       │ postgres client
+┌──────────────────────▼──────────────────────────────────┐
+│            DATABASE (Supabase PostgreSQL + pgvector)    │
+│  job_pointers │ profiles │ analyses │ market_snapshots  │
+│  execution_runs │ profile_snapshots │ governor_state     │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## User Plans
+
+| Plan | Access Level |
+|------|-------------|
+| `Starter` | Resume analysis, basic job browsing |
+| `Market Verdict` | Market intelligence view |
+| `Career Pro` | Enhanced analysis |
+| `Career Elite` | Full platform: career intelligence, market command, execution engine |
+| `Automation` | Career Elite + automated application runs |
+
+---
+
+*This document answers: "What is this system?"*

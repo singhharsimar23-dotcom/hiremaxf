@@ -1,0 +1,16 @@
+{
+  "name": "web-app",
+  "version": "1.0.0",
+  "status": "active",
+  "owner": "frontend-team",
+  "purpose": "React frontend — resume upload, job matching, market intelligence, application execution",
+  "entry_point": "index.tsx",
+  "router": "App.tsx",
+  "tech_stack": ["React 19", "Vite 6", "TypeScript", "Supabase-js", "Recharts", "pdfjs-dist"],
+  "depends_on": ["services/api", "shared/types"],
+  "forbidden_dependencies": ["core/*", "infra/*"],
+  "component_count": 37,
+  "build_command": "npm run build",
+  "dev_command": "npm run dev",
+  "dev_port": 3000
+}

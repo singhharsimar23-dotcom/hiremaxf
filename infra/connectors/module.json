@@ -1,0 +1,17 @@
+{
+  "name": "connector-fleet",
+  "version": "2.0.0",
+  "status": "stable",
+  "owner": "data-team",
+  "purpose": "35 HTTP fetchers — 'Dumb' raw data retrieval for the Trusted Core",
+  "interface": "base-connector.ts",
+  "tags": ["connector", "api-fetcher", "dumb-client", "raw-ingestion"],
+  "total_connectors": 35,
+  "depends_on": [
+    "infra/workers/types",
+    "core/shared/utils",
+    "core/shared/db/client"
+  ],
+  "forbidden_dependencies": ["apps/*", "services/*"],
+  "execution_mode": "scheduled-and-on-demand"
+}

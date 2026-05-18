@@ -1,0 +1,42 @@
+name: Trigger Embedding Pipeline
+on:
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger Embedding Worker
+        run: |
+          QUEUE=$(curl -s "${{ secrets.CF_WORKER_URL }}/queue-size")
+          if [ "$QUEUE" -lt 10 ]; then
+            echo "No meaningful work. Skipping."
+            exit 0
+          fi
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.CF_WORKER_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.WORKER_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"group":"embed"}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Embedding worker returned $HTTP_CODE"
+            echo "Response: $BODY"
+            exit 1
+          fi
+
+          SUCCEEDED=$(echo "$BODY" | jq -r '.stats.succeeded // 0')
+          PROCESSED=$(echo "$BODY" | jq -r '.stats.processed // 0')
+          DURATION=$(echo "$BODY" | jq -r '.stats.duration_ms // 0')
+
+          if [ "$PROCESSED" -gt 0 ] && [ "$SUCCEEDED" -eq 0 ]; then
+            echo "❌ Pipeline processed jobs but failed all of them"
+            exit 1
+          fi
+
+          echo "✅ Embedded $SUCCEEDED/$PROCESSED jobs in ${DURATION}ms"

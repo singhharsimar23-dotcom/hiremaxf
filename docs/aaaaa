@@ -1,0 +1,17 @@
+Proposed Changes
+Layer 1: Connectors (Untrusted Edge)
+[MODIFY] All Connectors in infra/shared-core/connectors/
+Remove normalizeJob, generateFingerprint, and any routing/filtering logic.
+Implement fetch() and immediate upload() to B2/S3.
+Standardize return type to DumbIngestionPayload[].
+Files impacted: adzuna.ts, apify.ts, builtin.ts, careerjet.ts, dice.ts, findwork.ts, google-jobs.ts, hacker-news.ts, himalayas.ts, indeed.ts, jobicy.ts, jooble.ts, linkedin-scout.ts, reed.ts, remote-ok.ts, smartrecruiters.ts, static-feed.ts, usajobs.ts, weworkremotely.ts, workable.ts, working-nomads.ts.
+Layer 2 & 4: Functions & Deployment
+[DEPLOY] infra-gateway: Ensure latest validation and backpressure logic is live.
+[DEPLOY] infra-parser: Ensure normalization and routing are correctly handled in the worker.
+[MODIFY/DEPLOY] infra-scraper: Expand discovery to include more ATS providers and connectors as they are refactored.
+Verification Plan
+Automated Tests
+Test Ingestion Harness: Run tests/test-runner.ts using Deno.
+This script validates:
+End-to-End Flow (Successful ingestion)
+Duplicate Handling (Dedup check)

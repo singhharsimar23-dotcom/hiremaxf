@@ -160,15 +160,47 @@ The following are **forbidden**:
 *   **Recruiter Ground Truth Dependencies:** (Does not exist).
 
 --------------------------------------------------------------------------------
+PART 3.5: DETERMINISTIC EXECUTION ENGINE (V5) - HARDENED
+--------------------------------------------------------------------------------
+
+## 0. The Truth Sparsity Doctrine (Phase 3 Hardening)
+Applied across all ingestion and intelligence layers:
+- **0.50 Defensibility Gate**: High-trust signals only. Claims (Work History, Education, Projects, etc.) are only admitted to the identity snapshot if their `final_weight` (Evidence Density) is $\ge 0.50$.
+- **Verified Completeness**: Snapshot completeness metrics are calculated solely from verified claims. Signal inflation from unverified data is strictly prohibited.
+- **Forensic Boost (1.5x)**: Candidates with a total `trust_score \ge 0.60` receive a dynamic multiplier in the decision engine to reward forensic signal density.
+
+## 1. Frame-Aware Injection Model
+To resolve failure on complex ATS like Lever (iframes) and Workday (Shadow DOM):
+- **Universal Injection**: Content scripts run in `all_frames: true`.
+- **Context Reporting**: Sub-frames report their structural fingerprint to the `ParentContentController`.
+- **Unified Orchestration**: Main script coordinates fills across frame boundaries via `chrome.runtime` messaging.
+
+## 2. JIT Secure Fetch (Resumes)
+Eliminates URL expiration and data exposure.
+- **Request**: Extension identifies an upload field.
+- **Grant**: Background script fetches a **60s TTL Signed URL** from Supabase Storage.
+- **Execution**: Extension performs the POST immediately using the fresh token.
+
+## 3. Precision Gating (Reputation Guard)
+To prevent "Ghosting Penalties" and preserve candidate standing:
+- **Inference**: Each application is vetted by the `match_score` logic.
+- **The Gate**: If `score < 0.70`, the extension enters `BLOCK_LOW_PROBABILITY` mode.
+- **UX**: User is notified that manual intervention is required to avoid reputation damage.
+
+## 4. Deterministic FSM & Verification
+Timing-based "Guesses" are removed.
+- **States**: `SCANNING`, `FIELD_MATCHING`, `FILLING`, `FIELD_VERIFICATION`, `COMPLETE`.
+- **Validation**: After filling, the system performs a post-fill scan to ensure DOM integrity and persistence.
+
+--------------------------------------------------------------------------------
 PART 4: AUTONOMOUS TALENT INTELLIGENCE SYSTEM (2040-GRADE)
 --------------------------------------------------------------------------------
 
 ## 1. The Dual-Brain Architecture
 The system operates as a bicameral mind:
-1.  **The Lizard Brain (Deterministic Core)**:
-    -   High-speed (`<50ms`), vector-based, calibrated inference.
-    -   Execution: `predict_match_score_v2`
-    -   Authority: Final arbiter of "safety" and "baseline fit".
+    - High-speed (`<50ms`), vector-based, calibrated inference.
+    - Execution: `match_jobs_v4` RPC (Layer 1 Matching).
+    - Authority: Final arbiter of "safety" and "baseline fit".
 2.  **The Neocortex (probabilistic AI)**:
     -   Async, deep-reasoning, graph-based intelligence.
     -   Execution: `ingest-ai-layer`, `simulation-engine`
@@ -261,15 +293,16 @@ Probability is no longer a monolith. It is composed of distinct behavioral gates
 
 ---
 
-## 11. AUTHORITY HIERARCHY (REVISED)
+## 11. AUTHORITY HIERARCHY (V5 REVISED)
 1.  **Likelihood Layer** (Probability Output) - *Top Authority*
-2.  **Deterministic Core** (Lizard Brain) - *The Arbiter*
-3.  **Governance Layer** (Meta-Control) - *Can Trigger Reset*
-4.  **Behavioral Layer** (Attention/Fatigue/Friction) - *Contextual Modifiers*
-5.  **Talent State Layer** (Derived) - *Read-Only Input*
-6.  **AI Semantic Layer** (Neocortex) - *Advisory Signals*
-7.  **Simulation Layer** (Futures) - *Hypothetical Only*
-8.  **Ingestion Layer** (Raw Data) - *No Authority*
+2.  **Precision Gate** (Match Guard) - *The Reputation Arbiter*
+3.  **Deterministic Core** (Lizard Brain) - *The Execution Arbiter*
+4.  **Governance Layer** (Meta-Control) - *Can Trigger Reset*
+5.  **Behavioral Layer** (Attention/Fatigue/Friction) - *Contextual Modifiers*
+6.  **Talent State Layer** (Derived) - *Read-Only Input*
+7.  **AI Semantic Layer** (Neocortex) - *Advisory Signals*
+8.  **Simulation Layer** (Futures) - *Hypothetical Only*
+9.  **Ingestion Layer** (Raw Data) - *No Authority*
 
 ---
 

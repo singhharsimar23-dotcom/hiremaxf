@@ -1,0 +1,15 @@
+{
+  "name": "services-api",
+  "version": "0.5.0",
+  "status": "partial",
+  "owner": "platform-team",
+  "purpose": "HTTP API layer — routes requests to core engines, manages auth",
+  "depends_on": ["core/*", "shared/types"],
+  "forbidden_dependencies": ["apps/*", "infra/*"],
+  "files": {
+    "hiringProbabilityEngine": "services/hiringProbabilityEngine.ts",
+    "analytics": "services/analytics/",
+    "api": "services/api/",
+    "auth": "services/auth/"
+  }
+}
