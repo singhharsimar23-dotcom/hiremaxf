@@ -126,8 +126,10 @@ function App() {
             // Safe to clear once routed
             window.history.replaceState({}, document.title, window.location.pathname);
         } else {
-            // Clean up URL if it has hash/params from OAuth (but not auth-bridge params)
-            if (window.location.hash || (window.location.search && !searchParams.get('ext_id'))) {
+            const isOauthHash = window.location.hash.includes('access_token=') || window.location.hash.includes('refresh_token=') || window.location.hash.includes('error=');
+            const isOauthSearch = searchParams.get('code') || searchParams.get('error');
+            // Clean up URL if it has hash/params from OAuth (but not auth-bridge params or pending OAuth auth codes/tokens)
+            if ((window.location.hash && !isOauthHash) || (window.location.search && !searchParams.get('ext_id') && !isOauthSearch)) {
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
         }
@@ -371,10 +373,23 @@ function App() {
                             }
                         }
                     }
+                    
+                    // Securely clear any OAuth hashes or query parameters from the address bar now that we are successfully authenticated
+                    if (window.location.hash || window.location.search) {
+                        const params = new URLSearchParams(window.location.search);
+                        if (!params.get('ext_id')) {
+                            window.history.replaceState({}, document.title, window.location.pathname);
+                        }
+                    }
                 } else {
                     setProfile(null);
                     setResumeHistory([]);
                     setAnalysisHistory({});
+                    
+                    // If there was an OAuth error in the URL, clean it up
+                    if (window.location.hash.includes('error=') || window.location.search.includes('error=')) {
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
                 }
                 setLoading(false);
             });

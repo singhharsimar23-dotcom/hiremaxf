@@ -20,10 +20,17 @@ const AuthView: React.FC<Props> = ({ onSuccess }) => {
   const oauth = async (provider: 'google' | 'github' | 'linkedin') => {
     setLoading(true); setError(null);
     try {
+      // If we are logging in from a Chrome Extension auth-bridge flow, preserve search params
+      const searchParams = new URLSearchParams(window.location.search);
+      const isExtensionFlow = searchParams.get('redirect') === 'auth-bridge' || searchParams.get('ext_id');
+      const redirectTo = isExtensionFlow
+        ? window.location.origin + window.location.pathname + window.location.search
+        : window.location.origin + '/';
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: window.location.origin + window.location.pathname + window.location.search,
+          redirectTo,
           scopes: provider === 'github' ? 'repo read:user' : provider === 'linkedin' ? 'openid profile email' : 'email profile'
         }
       });
