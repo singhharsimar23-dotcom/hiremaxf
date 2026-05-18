@@ -348,24 +348,19 @@ function App() {
     const viewRef = React.useRef<AppView>(view);
     useEffect(() => { viewRef.current = view; }, [view]);
 
-    useEffect(function () {
-        async function initAuth() {
-            const { data: { session } } = await supabase.auth.getSession();
-            setUser(session && session.user ? session.user : null);
-            if (session && session.user) await fetchUserData(session.user);
-            setLoading(false);
+    useEffect(() => {
+        let subscription: any = null;
 
-            const { data: { subscription } } = supabase.auth.onAuthStateChange(async function (event, session) {
-                setUser(session && session.user ? session.user : null);
-                if (session && session.user) {
-                    await fetchUserData(session.user);
-                    // FIX 1: Navigate to dashboard after OAuth/email login if user is on
-                    // the landing or auth page. Without this, the user stays on 'landing'
-                    // because onAuthStateChange never drove navigation previously.
+        const initAuth = async () => {
+            const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+                const currentUser = session && session.user ? session.user : null;
+                setUser(currentUser);
+
+                if (currentUser) {
+                    await fetchUserData(currentUser);
                     if (event === 'SIGNED_IN') {
                         const cv = viewRef.current;
-                        if (cv === 'auth') {
-                            // Preserve auth-bridge flow: if redirect=auth-bridge is in URL, go there instead
+                        if (cv === 'auth' || cv === 'landing') {
                             const params = new URLSearchParams(window.location.search);
                             if (params.get('redirect') === 'auth-bridge' || params.get('view') === 'auth-bridge') {
                                 setView('auth-bridge');
@@ -381,94 +376,92 @@ function App() {
                     setResumeHistory([]);
                     setAnalysisHistory({});
                 }
+                setLoading(false);
             });
-
-            return function () {
-                subscription.unsubscribe();
-            };
-        }
+            subscription = data.subscription;
+        };
 
         initAuth();
+
+        return () => {
+            if (subscription) {
+                subscription.unsubscribe();
+            }
+        };
     }, []);
 
     async function fetchUserData(authUser: any) {
-        const { data: existingProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', authUser.id)
-            .single();
+        try {
+            // Fetch profile, resumes, and analyses in parallel for 3x faster hydration
+            const [profileRes, resumesRes, analysesRes] = await Promise.all([
+                supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
+                supabase.from('resumes').select('*, resume_versions(*)').eq('user_id', authUser.id).order('created_at', { ascending: false }),
+                supabase.from('analyses').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false })
+            ]);
 
-        const providers = authUser.identities?.map((i: any) => i.provider) || [];
-        if (authUser.app_metadata?.provider && !providers.includes(authUser.app_metadata.provider)) {
-            providers.push(authUser.app_metadata.provider);
-        }
-        const uniqueProviders: string[] = Array.from(new Set(providers));
+            let updatedProfile = profileRes.data as UserProfile | null;
 
-        let updatedProfile: UserProfile;
+            if (!updatedProfile) {
+                const providers = authUser.identities?.map((i: any) => i.provider) || [];
+                if (authUser.app_metadata?.provider && !providers.includes(authUser.app_metadata.provider)) {
+                    providers.push(authUser.app_metadata.provider);
+                }
+                const uniqueProviders: string[] = Array.from(new Set(providers));
 
-        if (!existingProfile) {
-            const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({
-                id: authUser.id,
-                email: authUser.email,
-                full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
-                avatar_url: authUser.user_metadata?.avatar_url || null,
-                plan: 'Starter',
-                domain: 'UNSELECTED',
-                credits: 0,
-                connected_providers: uniqueProviders
-            }).select().single();
+                const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({
+                    id: authUser.id,
+                    email: authUser.email,
+                    full_name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
+                    avatar_url: authUser.user_metadata?.avatar_url || null,
+                    plan: 'Starter',
+                    domain: 'UNSELECTED',
+                    credits: 0,
+                    connected_providers: uniqueProviders
+                }).select().single();
 
-            if (insertError) return;
-            updatedProfile = newProfile as UserProfile;
-        } else {
-            updatedProfile = existingProfile as UserProfile;
-        }
+                if (!insertError && newProfile) {
+                    updatedProfile = newProfile as UserProfile;
+                }
+            }
 
-        setProfile(updatedProfile);
+            if (updatedProfile) {
+                setProfile(updatedProfile);
+            }
 
-        const resumesResult = await supabase
-            .from('resumes')
-            .select('*, resume_versions(*)')
-            .eq('user_id', authUser.id)
-            .order('created_at', { ascending: false });
+            const resumes = resumesRes.data;
+            if (resumes) {
+                const mapped = resumes.map(function (r: any) {
+                    return {
+                        id: r.id,
+                        name: r.name,
+                        versions: (r.resume_versions || []).map(function (v: any) {
+                            return {
+                                versionId: v.id,
+                                type: v.version_type,
+                                createdAt: v.created_at,
+                                updatedAt: v.created_at,
+                                templateId: v.template_id,
+                                data: v.data,
+                                status: v.status,
+                                error_reason: v.error_reason
+                            };
+                        })
+                    };
+                });
+                setResumeHistory(mapped);
+            }
 
-        const resumes = resumesResult.data;
-        if (resumes) {
-            const mapped = resumes.map(function (r: any) {
-                return {
-                    id: r.id,
-                    name: r.name,
-                    versions: (r.resume_versions || []).map(function (v: any) {
-                        return {
-                            versionId: v.id,
-                            type: v.version_type,
-                            createdAt: v.created_at,
-                            updatedAt: v.created_at,
-                            templateId: v.template_id,
-                            data: v.data,
-                            status: v.status,
-                            error_reason: v.error_reason
-                        };
-                    })
-                };
-            });
-            setResumeHistory(mapped);
-        }
-
-        const analysesResult = await supabase
-            .from('analyses')
-            .select('*')
-            .eq('user_id', authUser.id)
-            .order('created_at', { ascending: false });
-
-        const analyses = analysesResult.data;
-        if (analyses) {
-            const hist: Record<string, DiagnosticResult> = {};
-            analyses.forEach(function (a: any) {
-                hist[a.id] = Object.assign({}, a.results_json, { analysisId: a.id });
-            });
-            setAnalysisHistory(hist);
-            if (analyses.length > 0) setActiveAnalysisId(analyses[0].id);
+            const analyses = analysesRes.data;
+            if (analyses) {
+                const hist: Record<string, DiagnosticResult> = {};
+                analyses.forEach(function (a: any) {
+                    hist[a.id] = Object.assign({}, a.results_json, { analysisId: a.id });
+                });
+                setAnalysisHistory(hist);
+                if (analyses.length > 0) setActiveAnalysisId(analyses[0].id);
+            }
+        } catch (e) {
+            console.error("Failed to hydrate user profile/data:", e);
         }
     }
 
@@ -542,7 +535,7 @@ function App() {
 
     const showNav = activeView !== 'landing' && activeView !== 'auth' && user;
     const isLegalPage = activeView === 'terms' || activeView === 'privacy' || activeView === 'refund';
-    const showFooter = activeView === 'landing' || isLegalPage || activeView === 'pricing';
+    const showFooter = isLegalPage || activeView === 'pricing';
 
     const hasActiveJob = (Object.values(jobs) as BackgroundJob[]).some(j => j.status === 'RUNNING');
 

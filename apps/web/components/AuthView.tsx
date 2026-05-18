@@ -86,7 +86,7 @@ const AuthView: React.FC<Props> = ({ onSuccess }) => {
             </p>
           </div>
         </div>
-        <p className="text-slate-700 text-xs">© 2025–2026 HireMax. All rights reserved.</p>
+        <p className="text-slate-700 text-xs">© 2025–2026 HireMax.</p>
       </div>
 
       {/* Right panel — form */}

@@ -102,7 +102,7 @@ export const Footer: React.FC<FooterProps> = ({ setView }) => {
         {/* Bottom bar */}
         <div className="mt-12 pt-6 border-t border-[#1A1D26] flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-slate-600 text-xs font-medium">
-            © {year} HireMax Technologies. All rights reserved.
+            © {year} HireMax Technologies.
           </p>
           <div className="flex items-center gap-6">
             <button onClick={() => setView('terms')} className="text-slate-600 hover:text-slate-400 text-xs transition-colors">Terms</button>

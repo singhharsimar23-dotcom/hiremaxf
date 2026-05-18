@@ -1,0 +1,12 @@
+node_modules
+.git
+.vercel
+.next
+.wrangler
+dist
+docs
+tests
+preflight
+*.log
+*.txt
+scratch

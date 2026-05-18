@@ -843,7 +843,7 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
           </div>
           {/* Bottom bar */}
           <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-slate-600 text-xs font-medium">© 2025–2026 HireMax. All rights reserved.</p>
+            <p className="text-slate-600 text-xs font-medium">© 2025–2026 HireMax.</p>
             <p className="text-slate-700 text-xs">No guarantee of employment outcomes. Results depend on individual effort and market conditions.</p>
           </div>
         </div>

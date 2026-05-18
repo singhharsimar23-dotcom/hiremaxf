@@ -1,7 +1,0 @@
-{
-    "url": "https://example.com",
-    "dom_structure_hash": "test",
-    "user_id": "00000000-0000-0000-0000-000000000000",
-    "extension_version": "0.9.0",
-    "idempotency_key": "test_idemp_key_002"
-}
