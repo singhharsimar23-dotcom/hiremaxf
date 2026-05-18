@@ -15,7 +15,10 @@
     "pulse:30": "npx tsx confirm/dbPulse.ts 30",
     "3c": "npx tsx preflight/validateAdapters.ts && npx tsx preflight/validateSources.ts && npx tsx confirm/dbPulse.ts",
     "coverage": "npx tsx coverage/detectAnomalies.ts",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "deploy:web": "npm run build && npx vercel deploy --prod",
+    "production-gate": "npm run build && npx tsx scripts/production-readiness.ts",
+    "probe:functions": "npx tsx scripts/probe-edge-functions.ts"
   },
   "dependencies": {
     "@google/genai": "1.34.0",

@@ -19,7 +19,7 @@ import {
   Download,
   Save
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { supabase } from '../lib/supabase';
 import { ComparisonData, UserPlan, DiagnosticResult, StructuredResume } from '../types';
 
 // Add missing interface definition for RebuiltCompareView component
@@ -141,7 +141,6 @@ export const RebuiltCompareView: React.FC<RebuiltCompareViewProps> = ({ analysis
       setError(null);
 
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const prompt = `
           SYSTEM RULE — RESUME REBUILD OUTPUT FORMAT (STRICT)
           You are rebuilding a resume for HireMax.
@@ -177,15 +176,12 @@ export const RebuiltCompareView: React.FC<RebuiltCompareViewProps> = ({ analysis
           }
         `;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: prompt,
-          config: {
-            responseMimeType: "application/json"
-          }
-        });
+        const { data: genData, error: genError } = await supabase.functions.invoke('generate-text', { body: { prompt } });
+        if (genError) throw genError;
+        if (genData?.error) throw new Error(genData.error);
 
-        const parsed = JSON.parse(response.text || '{}');
+        const raw = (genData?.text ?? '').replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(raw || '{}');
         setData({
           analysisId: analysis.analysisId,
           oldResume: analysis.resumeText,

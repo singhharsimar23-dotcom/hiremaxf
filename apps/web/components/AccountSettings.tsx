@@ -113,7 +113,7 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({ plan, profile 
                 <p className="text-slate-500 text-xs font-medium">Your active subscription tier</p>
               </div>
               <span className={`font-black text-xs uppercase tracking-widest px-4 py-2 rounded-xl ${
-                plan === 'Elite' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' :
+                plan === 'Career Elite' || plan === 'Automation' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' :
                 plan === 'Career Pro' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/25' :
                 'bg-slate-700/50 text-slate-400 border border-slate-700'
               }`}>

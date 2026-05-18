@@ -52,7 +52,7 @@ export const FeatureDetails: React.FC<FeaturePageProps> = ({ view, result, setVi
                     {cat === 'visible' ? 'Visible (First 8s)' : cat === 'skipped' ? 'Likely Skipped' : 'Raises Concern'}
                   </p>
                   <div className="space-y-6">
-                    {result.recruiterScan.filter(o => o.category === cat).map((o, idx) => (
+                    {(result.recruiterScan ?? []).filter(o => o.category === cat).map((o, idx) => (
                       <div key={idx} className="space-y-2 border-b border-[#1D1D26] pb-6 last:border-0">
                         <p className="text-white font-black text-xs uppercase tracking-tight">{o.element}</p>
                         <p className="text-gray-500 text-xs leading-relaxed font-medium">{o.observation}</p>
@@ -68,7 +68,7 @@ export const FeatureDetails: React.FC<FeaturePageProps> = ({ view, result, setVi
       case 'rejection-model':
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {result.rejectionReasons.map((reason, idx) => (
+            {(result.rejectionReasons ?? []).map((reason, idx) => (
               <div key={idx} className="bg-[#16161E] p-10 rounded-[2.5rem] border border-[#1D1D26] shadow-xl">
                 <div className="flex justify-between items-start mb-10">
                   <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${reason.probability === 'High' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
@@ -91,9 +91,9 @@ export const FeatureDetails: React.FC<FeaturePageProps> = ({ view, result, setVi
         return (
           <div className="max-w-3xl mx-auto text-center py-20 bg-[#16161E] rounded-[3.5rem] border border-[#1D1D26] shadow-2xl px-12">
             <BarChart3 size={64} className="text-blue-500 mx-auto mb-10" />
-            <h3 className="text-4xl font-black text-white tracking-tighter mb-4">Saturation Index: {result.roleSaturation}</h3>
+            <h3 className="text-4xl font-black text-white tracking-tighter mb-4">Saturation Index: {result.roleSaturation ?? 'Unknown'}</h3>
             <p className="text-gray-500 text-lg font-medium leading-relaxed opacity-80">
-              The target role for {result.role} shows {result.roleSaturation.toLowerCase()} applicant density relative to active headcount listings.
+              The target role for {result.role} shows {(result.roleSaturation ?? 'unknown').toLowerCase()} applicant density relative to active headcount listings.
               Recruiter throughput is currently adjusted for high volume screening.
             </p>
           </div>
@@ -102,7 +102,7 @@ export const FeatureDetails: React.FC<FeaturePageProps> = ({ view, result, setVi
       case 'skill-radar':
         return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {result.skillRadar.map((item, idx) => (
+            {(result.skillRadar ?? []).map((item, idx) => (
               <div key={idx} className="bg-[#16161E] p-10 rounded-[3rem] border border-[#1D1D26] flex items-center justify-between group hover:border-blue-500/30 transition-all shadow-xl">
                 <div>
                   <h4 className="text-xl font-black text-white tracking-tighter mb-2">{item.skill}</h4>

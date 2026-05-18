@@ -204,7 +204,11 @@ const MarketOutlookView: React.FC = () => {
       setMacroSignals(macroRes.data || []);
       setMomentum(momentumRes.data || []);
       setCausalSignals(causalRes.data || []);
-      setHealth(healthRes.data || null);
+      setHealth(
+        Array.isArray(healthRes.data) && healthRes.data.length > 0
+          ? (healthRes.data[0] as SystemHealth)
+          : null
+      );
       setSkillEvolution(evoRes.data || []);
       setReliability(reliabilityRes.data || []);
       setLastRefresh(new Date());

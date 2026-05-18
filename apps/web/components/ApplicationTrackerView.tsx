@@ -3,9 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, Loader2, Mail, Copy, Check, BarChart2, Star, ExternalLink, Zap, TrendingUp, AlertTriangle, ChevronRight, Trash2, Calendar, Briefcase, Command, LayoutGrid, List as ListIcon, Search, Building2, MapPin, DollarSign, Clock, ArrowRight, Eye, UserX, Inbox, Sparkles } from 'lucide-react';
 import { ResumeGroup, UserPlan } from '../types';
 import { supabase } from '../lib/supabase';
-import { GoogleGenAI } from '@google/genai';
 
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+async function generateViaEdge(prompt: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('generate-text', { body: { prompt } });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+  return data?.text ?? '';
+}
 
 interface JobApp {
   id: string; user_id: string; company_name: string; role_title: string;
@@ -136,15 +140,13 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
     if (!cmdKInput.trim()) return;
     setCmdKSaving(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
-      const r = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: `Extract job details from this text: "${cmdKInput}". Return JSON with exactly these keys: "company" (string), "role" (string), "source" (string: LinkedIn, Referral, Recruiter, Company Site, or Other). Make reasonable guesses. If unknown, use "Unknown". Do not use markdown blocks, just raw JSON.`
-      });
+      const txt = await generateViaEdge(
+        `Extract job details from this text: "${cmdKInput}". Return JSON with exactly these keys: "company" (string), "role" (string), "source" (string: LinkedIn, Referral, Recruiter, Company Site, or Other). Make reasonable guesses. If unknown, use "Unknown". Do not use markdown blocks, just raw JSON.`
+      );
       let parsed = { company: "Unknown Company", role: "Unknown Role", source: "Other" };
       try {
-        const txt = r.text?.replace(/```json/g, '').replace(/```/g, '') || '{}';
-        parsed = JSON.parse(txt);
+        const cleaned = txt.replace(/```json/g, '').replace(/```/g, '') || '{}';
+        parsed = JSON.parse(cleaned);
       } catch (err) {}
       
       const fu = new Date(); fu.setDate(fu.getDate() + 7);
@@ -185,12 +187,10 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
   const genFollowUp = async (app: JobApp) => {
     setFuLoading(app.id);
     try {
-      const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
-      const r = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: `Write a professional follow-up email. Company: ${app.company_name}. Role: ${app.role_title}. Applied ${daysAgo(app.applied_at)} days ago. Contact: ${app.contact_name || 'Hiring Team'}. Max 80 words. Return only the email body.`
-      });
-      setFuText(p => ({ ...p, [app.id]: r.text || '' }));
+      const text = await generateViaEdge(
+        `Write a professional follow-up email. Company: ${app.company_name}. Role: ${app.role_title}. Applied ${daysAgo(app.applied_at)} days ago. Contact: ${app.contact_name || 'Hiring Team'}. Max 80 words. Return only the email body.`
+      );
+      setFuText(p => ({ ...p, [app.id]: text }));
     } catch { }
     setFuLoading(null);
   };

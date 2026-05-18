@@ -11,7 +11,6 @@ import { Footer } from './components/Footer';
 const AIReviewView = lazy(() => import('./components/AIReviewView').then(m => ({ default: m.AIReviewView })));
 const FullReviewView = lazy(() => import('./components/FullReviewView').then(m => ({ default: m.FullReviewView })));
 const CareerIntelligenceView = lazy(() => import('./components/CareerIntelligenceView').then(m => ({ default: m.CareerIntelligenceView })));
-const ApplicationsView = lazy(() => import('./components/ApplicationsView').then(m => ({ default: m.ApplicationsView })));
 const ApplicationExecutionView = lazy(() => import('./components/ApplicationExecutionView').then(m => ({ default: m.ApplicationExecutionView })));
 const ResumeBuilder = lazy(() => import('./components/ResumeBuilder').then(m => ({ default: m.ResumeBuilder })));
 const RebuiltCompareView = lazy(() => import('./components/RebuiltCompareView').then(m => ({ default: m.RebuiltCompareView })));
@@ -43,8 +42,8 @@ import {
 } from 'lucide-react';
 import { AppView, DiagnosticResult, UserPlan, ResumeGroup, ResumeVersion, ResumeProfile, StructuredResume, UserProfile, RoleTrack, BackgroundJob, JobType, JobStatus } from './types';
 import { supabase } from './lib/supabase';
-import { GoogleGenAI } from "@google/genai";
 import { QUICK_ACTIONS } from './constants';
+import { isAdminUser } from './lib/admin';
 
 
 function App() {
@@ -90,7 +89,12 @@ function App() {
         const handlePopState = () => {
             const path = window.location.pathname.replace('/', '');
             if (path && path !== view) {
-                const validViews: AppView[] = ['dashboard', 'profile', 'full-review', 'career-intelligence', 'market-outlook', 'applications', 'rebuild-standalone', 'resume-editor', 'pricing', 'settings', 'billing', 'faq', 'contact', 'admin', 'tracker', 'interview-prep', 'cover-letter', 'linkedin-optimizer', 'history', 'preview', 'ai-review', 'terms', 'privacy', 'refund'];
+                const validViews: AppView[] = [
+                    'landing', 'auth', 'auth-bridge', 'pricing', 'faq', 'contact', 'terms', 'privacy', 'refund',
+                    'dashboard', 'profile', 'full-review', 'career-intelligence', 'market-outlook', 'applications',
+                    'rebuild', 'rebuild-standalone', 'resume-editor', 'settings', 'billing', 'admin', 'tracker',
+                    'interview-prep', 'cover-letter', 'linkedin-optimizer', 'history', 'preview', 'ai-review',
+                ];
                 if (validViews.includes(path as AppView)) {
                     setView(path as AppView);
                 }
@@ -239,7 +243,7 @@ function App() {
                         body: { ...commonBody, application_id: finalPayload.application_id, resume_id: finalPayload.resume_id }
                     });
                     if (error) throw error;
-                    result = { newResume: data.data };
+                    result = data;
                 } else if (type === 'OUTLOOK') {
                     const { data, error } = await supabase.functions.invoke('generate-outlook', { body: commonBody });
                     if (error) throw error;
@@ -349,46 +353,72 @@ function App() {
 
     useEffect(() => {
         let subscription: any = null;
+        
+        // Timeout guard: Guarantee loader is dismissed after 2.5 seconds max
+        const timeoutId = setTimeout(() => {
+            setLoading(false);
+        }, 2500);
 
         const initAuth = async () => {
-            const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+            // Get initial session immediately to speed up load time and prevent race conditions
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
                 const currentUser = session && session.user ? session.user : null;
                 setUser(currentUser);
-
                 if (currentUser) {
                     await fetchUserData(currentUser);
-                    if (event === 'SIGNED_IN') {
-                        const cv = viewRef.current;
-                        if (cv === 'auth' || cv === 'landing') {
-                            const params = new URLSearchParams(window.location.search);
-                            if (params.get('redirect') === 'auth-bridge' || params.get('view') === 'auth-bridge') {
-                                setView('auth-bridge');
-                                window.history.pushState({}, '', '/auth-bridge');
-                            } else {
-                                setView('dashboard');
-                                window.history.pushState({}, '', '/dashboard');
+                }
+            } catch (err) {
+                console.error("Failed to get initial session:", err);
+            } finally {
+                setLoading(false);
+            }
+
+            // Listen for auth state changes
+            const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+                try {
+                    const currentUser = session && session.user ? session.user : null;
+                    setUser(currentUser);
+
+                    if (currentUser) {
+                        await fetchUserData(currentUser);
+                        if (event === 'SIGNED_IN') {
+                            const cv = viewRef.current;
+                            if (cv === 'auth' || cv === 'landing') {
+                                const params = new URLSearchParams(window.location.search);
+                                if (params.get('redirect') === 'auth-bridge' || params.get('view') === 'auth-bridge') {
+                                    setView('auth-bridge');
+                                    window.history.pushState({}, '', '/auth-bridge');
+                                } else {
+                                    setView('dashboard');
+                                    window.history.pushState({}, '', '/dashboard');
+                                }
                             }
                         }
-                    }
-                    
-                    // Securely clear any OAuth hashes or query parameters from the address bar now that we are successfully authenticated
-                    if (window.location.hash || window.location.search) {
-                        const params = new URLSearchParams(window.location.search);
-                        if (!params.get('ext_id')) {
+                        
+                        // Securely clear any OAuth hashes or query parameters from the address bar now that we are successfully authenticated
+                        if (window.location.hash || window.location.search) {
+                            const params = new URLSearchParams(window.location.search);
+                            if (!params.get('ext_id')) {
+                                window.history.replaceState({}, document.title, window.location.pathname);
+                            }
+                        }
+                    } else {
+                        setProfile(null);
+                        setResumeHistory([]);
+                        setAnalysisHistory({});
+                        
+                        // If there was an OAuth error in the URL, clean it up
+                        if (window.location.hash.includes('error=') || window.location.search.includes('error=')) {
                             window.history.replaceState({}, document.title, window.location.pathname);
                         }
                     }
-                } else {
-                    setProfile(null);
-                    setResumeHistory([]);
-                    setAnalysisHistory({});
-                    
-                    // If there was an OAuth error in the URL, clean it up
-                    if (window.location.hash.includes('error=') || window.location.search.includes('error=')) {
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                    }
+                } catch (err) {
+                    console.error("Error during auth state change:", err);
+                } finally {
+                    setLoading(false);
+                    clearTimeout(timeoutId);
                 }
-                setLoading(false);
             });
             subscription = data.subscription;
         };
@@ -396,6 +426,7 @@ function App() {
         initAuth();
 
         return () => {
+            clearTimeout(timeoutId);
             if (subscription) {
                 subscription.unsubscribe();
             }
@@ -542,8 +573,14 @@ function App() {
         window.history.pushState({}, '', `/${targetView === 'landing' ? '' : targetView}${id ? `?id=${id}` : ''}`);
     }, [isElite, profile, user]);
 
-    const isProtectedRoute = ['dashboard', 'applications', 'ai-review', 'full-review', 'career-intelligence', 'market-outlook', 'rebuild-standalone', 'profile', 'history', 'resume-editor', 'settings', 'billing', 'interview-prep', 'cover-letter', 'tracker', 'linkedin-optimizer', 'preview', 'admin'].includes(view);
-    const activeView = (isProtectedRoute && !loading && !user) ? 'auth' : view;
+    const isProtectedRoute = ['dashboard', 'applications', 'ai-review', 'full-review', 'career-intelligence', 'market-outlook', 'rebuild', 'rebuild-standalone', 'profile', 'history', 'resume-editor', 'settings', 'billing', 'interview-prep', 'cover-letter', 'tracker', 'linkedin-optimizer', 'preview', 'admin'].includes(view);
+    const isAdminRoute = view === 'admin';
+    const adminAllowed = isAdminUser(user?.email);
+    const activeView = (isProtectedRoute && !loading && !user)
+        ? 'auth'
+        : (isAdminRoute && user && !adminAllowed)
+            ? 'dashboard'
+            : view;
 
     const showNav = activeView !== 'landing' && activeView !== 'auth' && user;
     const isLegalPage = activeView === 'terms' || activeView === 'privacy' || activeView === 'refund';
@@ -681,6 +718,15 @@ function App() {
                             <div style={{ display: activeView === 'market-outlook' ? 'block' : 'none' }}>
                                 <MarketOutlookView />
                             </div>
+                            {activeView === 'rebuild' && (
+                                <RebuiltCompareView
+                                    analysisId={activeAnalysisId}
+                                    history={analysisHistory}
+                                    plan={plan}
+                                    onUpgrade={() => handleSetView('pricing')}
+                                    onSave={async () => { if (user) await fetchUserData(user); handleSetView('history'); }}
+                                />
+                            )}
                             {activeView === 'rebuild-standalone' && <RebuildStandaloneView
                                 plan={plan}
                                 credits={profile && profile.credits ? profile.credits : 0}
@@ -723,12 +769,17 @@ function App() {
 
                             {activeView === 'preview' && <ExecutionPreviewView onNavigate={(view: AppView, id?: string) => handleSetView(view, id)} />}
                             {activeView === 'resume-editor' && <ResumeBuilder plan={plan} groupId={editingResumeId} versionId={editingVersionId} history={resumeHistory} onBack={function () { handleSetView('dashboard'); }} />}
-                            {activeView === 'pricing' && <Pricing setPlan={async function (p) { }} setView={handleSetView} currentPlan={plan} />}
+                            {activeView === 'pricing' && <Pricing setPlan={async function (p) {
+                                if (user) {
+                                    await supabase.from('profiles').update({ plan: p }).eq('id', user.id);
+                                    setProfile(Object.assign({}, profile, { plan: p }));
+                                }
+                            }} setView={handleSetView} currentPlan={plan} />}
                             {activeView === 'settings' && <AccountSettings plan={plan} profile={profile} />}
                             {activeView === 'billing' && <Billing plan={plan} setView={handleSetView} />}
                             {activeView === 'faq' && <FAQ setView={handleSetView} />}
                             {activeView === 'contact' && <Contact user={user} />}
-                            {activeView === 'admin' && <ErrorBoundary name="Admin"><AdminIntelligence /></ErrorBoundary>}
+                            {activeView === 'admin' && adminAllowed && <ErrorBoundary name="Admin"><AdminIntelligence /></ErrorBoundary>}
                             {activeView === 'interview-prep' && <InterviewPrepView plan={plan} history={resumeHistory} user={user} onUpgrade={() => handleSetView('pricing')} dispatchJob={dispatchJob} activeJobs={jobs} />}
                             {activeView === 'cover-letter' && <CoverLetterView plan={plan} history={resumeHistory} user={user} onUpgrade={() => handleSetView('pricing')} dispatchJob={dispatchJob} activeJobs={jobs} />}
                             {activeView === 'tracker' && <ApplicationTrackerView plan={plan} user={user} history={resumeHistory} onUpgrade={() => handleSetView('pricing')} />}

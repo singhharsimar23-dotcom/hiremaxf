@@ -239,7 +239,7 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
 
   const handleSelectKey = async () => {
     try {
-      await window.aistudio.openSelectKey();
+      await window.aistudio?.openSelectKey?.();
       startRebuild();
     } catch (e) {
       console.error("Key selection failed", e);

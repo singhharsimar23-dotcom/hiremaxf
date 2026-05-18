@@ -73,6 +73,17 @@
   "exclude": [
     "node_modules",
     "dist",
-    "archive"
+    "archive",
+    "brain",
+    "apps/web/test-utils",
+    "debug_ingestion.ts",
+    "infra",
+    "core",
+    "worker",
+    "tests",
+    "scripts",
+    "preflight",
+    "confirm",
+    "coverage"
   ]
 }

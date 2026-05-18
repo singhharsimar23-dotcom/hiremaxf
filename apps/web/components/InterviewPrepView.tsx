@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Lock, Loader2, Phone, Users, Code2, Star, HelpCircle, Printer, RotateCcw, Check, ChevronDown } from 'lucide-react';
-import { UserPlan, ResumeGroup, InterviewPrepKit } from '../types';
+import { UserPlan, ResumeGroup, InterviewPrepKit, JobType, BackgroundJob } from '../types';
 import { supabase } from '../lib/supabase';
 import { useBackgroundJobs } from '../lib/backgroundJobs';
 
@@ -260,8 +260,8 @@ export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgr
                   <p className="text-white font-black text-sm">{q.question}</p>
                   <LBadge pct={q.likelihood} />
                 </div>
-                {q.keyPoints?.length>0 && <div className="mb-3"><p className="text-[7px] font-black text-blue-400 uppercase tracking-widest mb-2">Key Points to Cover</p>{q.keyPoints.map((k,j)=><p key={j} className="text-slate-300 text-xs">• {k}</p>)}</div>}
-                {q.tradeoffs?.length>0 && <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-4 mt-2"><p className="text-[7px] font-black text-indigo-400 uppercase tracking-widest mb-2">Tradeoffs to Mention</p>{q.tradeoffs.map((t,j)=><p key={j} className="text-slate-300 text-xs">⇄ {t}</p>)}</div>}
+                {(q.keyPoints?.length ?? 0) > 0 && <div className="mb-3"><p className="text-[7px] font-black text-blue-400 uppercase tracking-widest mb-2">Key Points to Cover</p>{(q.keyPoints ?? []).map((k,j)=><p key={j} className="text-slate-300 text-xs">• {k}</p>)}</div>}
+                {(q.tradeoffs?.length ?? 0) > 0 && <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-4 mt-2"><p className="text-[7px] font-black text-indigo-400 uppercase tracking-widest mb-2">Tradeoffs to Mention</p>{(q.tradeoffs ?? []).map((t,j)=><p key={j} className="text-slate-300 text-xs">⇄ {t}</p>)}</div>}
               </div>
             ))}
           </div>}

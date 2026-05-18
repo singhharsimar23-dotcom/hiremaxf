@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { isAdminUser } from '../lib/admin';
 import { Brain, Save, History, AlertTriangle, CheckCircle2, Loader2, ArrowRight, Target, Zap } from 'lucide-react';
 
 interface WeightDefinition {
@@ -20,6 +21,7 @@ interface WeightSet {
 }
 
 export const AdminIntelligence: React.FC = () => {
+    const [authorized, setAuthorized] = useState<boolean | null>(null);
     const [definitions, setDefinitions] = useState<WeightDefinition[]>([]);
     const [currentSet, setCurrentSet] = useState<WeightSet | null>(null);
     const [history, setHistory] = useState<WeightSet[]>([]);
@@ -33,18 +35,12 @@ export const AdminIntelligence: React.FC = () => {
     const [optResult, setOptResult] = useState<any>(null);
     const [runningOpt, setRunningOpt] = useState(false);
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            // 1. Fetch Definitions
             const { data: defs } = await supabase.from('scoring_weights_definitions').select('*').order('name');
             setDefinitions(defs || []);
 
-            // 2. Fetch Active Weight Set
             const { data: active } = await supabase
                 .from('scoring_weight_sets')
                 .select('*')
@@ -57,26 +53,51 @@ export const AdminIntelligence: React.FC = () => {
             if (active) {
                 setFormWeights(active.weights);
             } else {
-                // Fallback to defaults
                 const defaults: Record<string, number> = {};
                 defs?.forEach(d => defaults[d.name] = d.default_value);
                 setFormWeights(defaults);
             }
 
-            // 3. Fetch History
             const { data: hist } = await supabase
                 .from('scoring_weight_sets')
                 .select('*')
                 .order('version', { ascending: false })
                 .limit(10);
             setHistory(hist || []);
-
         } catch (error) {
             console.error("Error fetching intelligence data:", error);
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            setAuthorized(isAdminUser(user?.email));
+        });
+    }, []);
+
+    useEffect(() => {
+        if (authorized) fetchData();
+    }, [authorized, fetchData]);
+
+    if (authorized === null) {
+        return (
+            <div className="flex items-center justify-center min-h-[40vh]">
+                <Loader2 className="animate-spin text-blue-400" />
+            </div>
+        );
+    }
+
+    if (!authorized) {
+        return (
+            <div className="max-w-lg mx-auto mt-24 text-center px-6">
+                <AlertTriangle className="mx-auto text-amber-400 mb-4" size={32} />
+                <h2 className="text-xl font-bold text-white mb-2">Access denied</h2>
+                <p className="text-slate-400 text-sm">This area is restricted to administrators.</p>
+            </div>
+        );
+    }
 
     const handleWeightChange = (name: string, value: string) => {
         const numVal = parseFloat(value);

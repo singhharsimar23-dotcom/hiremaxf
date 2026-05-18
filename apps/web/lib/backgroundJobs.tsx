@@ -47,7 +47,7 @@ export const BackgroundJobsProvider: React.FC<{ children: React.ReactNode }> = (
   const getJob = useCallback((id: string) => jobsRef.current.find(j => j.id === id), []);
   const dismissJob = useCallback((id: string) => setJobs(prev => prev.filter(j => j.id !== id)), []);
 
-  const visible = jobs.filter(j => j.status === 'running' || (j.status !== 'running' && Date.now() - j.createdAt < 8000));
+  const visible = jobs.filter(j => j.status === 'running' || Date.now() - j.createdAt < 8000);
 
   return (
     <Ctx.Provider value={{ jobs, startJob, getJob, dismissJob }}>

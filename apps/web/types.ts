@@ -447,24 +447,50 @@ export interface DiscoverySessionV2 {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  filters: any;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
 }
 
 // ─── Interview Prep Types ──────────────────────────────────────────────────────
 export interface InterviewPrepKit {
-  phoneScreen: Array<{ question: string; whyAsked: string; framework: string; avoid: string; }>;
-  salaryAnchor: { response: string; reasoning: string; };
-  hiringManager: Array<{ question: string; followUp: string; resumeAnchor: string; framework: string; }>;
-  technical: {
-    detectedType: 'Leetcode' | 'System Design' | 'Take-home' | 'Case Study';
-    questions: Array<{ question: string; likelihood: number; hints: string; }>;
+  recruiterScreen?: Array<{
+    question: string;
+    whyAsked: string;
+    framework: string[];
+    avoid: string[];
+  }>;
+  phoneScreen?: Array<{ question: string; whyAsked: string; framework: string; avoid: string; }>;
+  salaryAnchor?: {
+    range?: string;
+    script?: string;
+    response?: string;
+    reasoning?: string;
+  };
+  hmScreen?: Array<{
+    question: string;
+    followUp?: string;
+    resumeAnchor: string;
+    framework: string[];
+  }>;
+  hiringManager?: Array<{ question: string; followUp: string; resumeAnchor: string; framework: string; }>;
+  technical?: {
+    detectedType: 'Leetcode' | 'System Design' | 'Take-home' | 'Case Study' | 'CODING' | 'SYSTEM_DESIGN' | 'TAKE_HOME';
+    questions: Array<{
+      question: string;
+      likelihood: number;
+      hints?: string;
+      keyPoints?: string[];
+      tradeoffs?: string[];
+    }>;
     patterns?: string[];
   };
-  behavioral: Array<{ question: string; situation: string; task: string; userAction?: string; userResult?: string; }>;
-  questionsToAsk: Array<{ question: string; category: string; mustAsk: boolean; }>;
+  behavioral?: Array<{
+    question: string;
+    situation: string;
+    task: string;
+    preFilled?: { situation: string; task: string };
+    userAction?: string;
+    userResult?: string;
+  }>;
+  questionsToAsk?: Array<{ question: string; category: string; mustAsk: boolean; whyItWorks?: string; }>;
 }
 
 // ─── Cover Letter Types ────────────────────────────────────────────────────────

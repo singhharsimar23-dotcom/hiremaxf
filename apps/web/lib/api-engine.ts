@@ -190,12 +190,18 @@ export const ApiEngine = {
             throw new Error(msg);
         }
 
-        const result = await response.json();
+        const result = await response.json() as {
+            success?: boolean;
+            error?: string;
+            reason?: string;
+            full_description?: string;
+            verified_source_url?: string;
+        };
         if (!result.success) throw new Error(result.error || result.reason || "Materialization failed");
 
         return {
-            full_description: result.full_description,
-            verified_source_url: result.verified_source_url
+            full_description: result.full_description ?? '',
+            verified_source_url: result.verified_source_url ?? ''
         };
     },
 
