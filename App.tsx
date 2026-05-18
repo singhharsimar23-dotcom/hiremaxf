@@ -37,6 +37,7 @@ import { AppView, DiagnosticResult, UserPlan, ResumeGroup, ResumeVersion, Resume
 import { supabase } from './lib/supabase';
 import { GoogleGenAI } from "@google/genai";
 import { QUICK_ACTIONS } from './constants';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 
 function App() {
@@ -577,6 +578,7 @@ function App() {
           )}
         </div>
       </main>
+      <SpeedInsights />
     </div>
   );
 }
