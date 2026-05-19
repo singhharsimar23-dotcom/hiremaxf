@@ -24,8 +24,7 @@ import {
   Eye,
   Briefcase,
   MessageSquare,
-  FileSearch,
-  Instagram
+  FileSearch
 } from 'lucide-react';
 import { AppView, UserPlan } from '../types';
 
@@ -189,15 +188,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
         >
           {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
-        <a
-          href="https://www.instagram.com/hiremax.ai/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hidden lg:flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-gradient-to-r from-purple-900/40 via-pink-900/40 to-orange-900/20 border border-pink-500/20 text-pink-400 hover:text-white hover:border-pink-500/50 hover:scale-[1.02] shadow-lg shadow-pink-500/10 shrink-0 animate-in fade-in duration-300"
-        >
-          <Instagram size={14} className="animate-pulse text-pink-400" />
-          Follow @hiremax.ai
-        </a>
+
         <button
           onClick={onNewResume}
           className="hidden md:flex items-center gap-2 bg-[#1A1D26] hover:bg-[#252833] text-white px-5 py-2.5 rounded-xl font-bold text-sm border border-[#2D313D] transition-all"
