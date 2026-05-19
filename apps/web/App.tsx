@@ -6,6 +6,7 @@ import Header from './components/Header';
 import LandingPage from './components/LandingPage';
 import AuthView from './components/AuthView';
 import { Footer } from './components/Footer';
+import { Analytics } from '@vercel/analytics/react';
 
 // Lazy load large/dynamic components to reduce initial bundle from 3.2MB to under 200KB (10x faster loads)
 const AIReviewView = lazy(() => import('./components/AIReviewView').then(m => ({ default: m.AIReviewView })));
@@ -838,6 +839,7 @@ function App() {
                 </ErrorBoundary>
             </main>
             {showFooter && <Footer setView={handleSetView} />}
+            <Analytics />
         </div>
     );
 }

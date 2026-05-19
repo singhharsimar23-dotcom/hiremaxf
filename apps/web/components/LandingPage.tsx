@@ -663,8 +663,8 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
       {/* ── SIMPLE TOP BAR ── */}
       <div className="absolute top-0 left-0 right-0 px-6 py-6 flex justify-between items-center z-50 max-w-7xl mx-auto">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-            <Shield size={16} className="text-black" />
+          <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(255,255,255,0.2)] border border-[#2D313D] bg-[#0E1118]">
+            <img src="/favicon.png" alt="HireMax Logo" className="w-full h-full object-cover" />
           </div>
           <span className="text-white font-black text-lg tracking-tight">HireMax</span>
         </div>
