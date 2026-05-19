@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Lock, Loader2, Phone, Users, Code2, Star, HelpCircle, Printer, RotateCcw, Check, ChevronDown } from 'lucide-react';
 import { UserPlan, ResumeGroup, InterviewPrepKit, JobType, BackgroundJob } from '../types';
 import { supabase } from '../lib/supabase';
@@ -43,6 +43,7 @@ export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgr
   const [stars, setStar] = useState<Record<number,{action:string;result:string}>>({});
   const [savedKeys, setSavedKeys] = useState<Set<number>>(new Set());
   const [trackingJobId, setTrackingJobId] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const resumeText = (() => {
     const g = history.find(h => h.id === selectedGroup) || history[0];
@@ -81,12 +82,14 @@ export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgr
     if (activeJob.status === 'RUNNING') {
       setLoading(true);
     } else if (activeJob.status === 'COMPLETED' && activeJob.result) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setKit(activeJob.result);
       localStorage.setItem(`hiremax_prep_${jdHash}`, JSON.stringify({ kit: activeJob.result, ts: Date.now() }));
       setTab(0);
       setTrackingJobId(null);
       setLoading(false);
     } else if (activeJob.status === 'FAILED') {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setError(activeJob.error || 'Generation failed.');
       setTrackingJobId(null);
       setLoading(false);
@@ -98,7 +101,8 @@ export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgr
     if (!form.jobDescription.trim()) { setError('Paste a job description to continue.'); return; }
     setLoading(true); setError('');
     const msgs = ['Generating Prep Kit…', 'Building from your resume…', 'Calibrating for company stage…'];
-    let i = 0; const iv = setInterval(() => { setLoadMsg(msgs[i++ % msgs.length]); }, 1800);
+    let i = 0; 
+    intervalRef.current = setInterval(() => { setLoadMsg(msgs[i++ % msgs.length]); }, 1800);
     
     try {
       const jobId = await dispatchJob('PREP', {
@@ -111,8 +115,7 @@ export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgr
     } catch (err: any) { 
       setError(err.message || 'Generation failed.'); 
       setLoading(false);
-    } finally {
-      clearInterval(iv);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     }
   };
 

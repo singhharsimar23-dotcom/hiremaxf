@@ -44,6 +44,7 @@ interface FullReviewViewProps {
   // FIX 4: Allow history navigation directly from this view
   analysisHistory?: Record<string, DiagnosticResult>;
   setActiveAnalysisId?: (id: string) => void;
+  activeRebuild?: { scoreBefore: number; scoreAfter: number; linkedAnalysisId: string } | null;
 }
 
 interface PointWidgetProps {
@@ -69,12 +70,10 @@ const PointWidget: React.FC<PointWidgetProps> = ({ point, isStarter, isChokepoin
   }
 
   // Atomic changes are sourced from the pipeline — filtered by dimension name matching this point.
-  // Falls back to empty array (graceful degradation for analyses run before the upgrade).
-  const dimensionChanges: AtomicChange[] = (atomicChanges || []).filter(
+  // Never show changes from another dimension (that destroys trust).
+  const displayChanges: AtomicChange[] = (atomicChanges || []).filter(
     c => c.dimension?.toLowerCase() === point.name?.toLowerCase()
   );
-  // If no exact dimension match, show any changes (backward compat for mixed-schema analyses)
-  const displayChanges = dimensionChanges.length > 0 ? dimensionChanges : (atomicChanges || []).slice(0, 1);
 
   return (
     <div className={`bg-[#16161E] border rounded-[2rem] overflow-hidden transition-all ${expanded ? 'border-blue-500/40 shadow-2xl' : (isChokepoint ? 'border-red-500/30' : 'border-[#1D1D26] hover:border-blue-500/20')
@@ -170,7 +169,10 @@ const PointWidget: React.FC<PointWidgetProps> = ({ point, isStarter, isChokepoin
               </div>
             ) : (
               <div className="bg-[#0D0D12] p-8 rounded-2xl border border-white/5 text-center">
-                <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">Re-run analysis to generate intervention data</p>
+                <RefreshCcw size={18} className="text-slate-700 mx-auto mb-3" />
+                <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">
+                  Re-run analysis to generate surgical fixes for this dimension
+                </p>
               </div>
             )}
           </div>
@@ -335,14 +337,18 @@ const DecisionInstrument = ({ state, windowEst, isAnalystView, chips, appWindow 
               </div>
               <div className="grid grid-cols-1 gap-2">
                 {[
-                  { l: 'Competition', v: 'High Density', c: 'text-amber-500' },
-                  { l: 'Bandwidth', v: 'Saturated', c: 'text-red-500' }
+                  { l: 'Competition', v: '250+ / Role', c: 'text-amber-500' },
+                  { l: 'Bandwidth', v: 'Competitive', c: 'text-red-500' }
                 ].map((m, i) => (
                   <div key={i} className="flex justify-between items-center bg-white/5 px-4 py-3 rounded-xl border border-white/5">
                     <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">{m.l}</span>
                     <span className={`text-[10px] font-black uppercase ${m.c}`}>{m.v}</span>
                   </div>
                 ))}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1">
+                <Info size={10} className="text-slate-700" />
+                <p className="text-[8px] font-black text-slate-700 uppercase tracking-widest">2026 Market Context · Static Data</p>
               </div>
             </div>
 
@@ -352,9 +358,9 @@ const DecisionInstrument = ({ state, windowEst, isAnalystView, chips, appWindow 
                 <div className="h-[1px] w-8 bg-red-500/30 ml-auto" />
               </div>
               <div className="space-y-2">
-                <div className="flex justify-between items-center p-3 bg-red-600/5 border border-red-500/10 rounded-xl">
-                  <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">Rejection Persistence</p>
-                  <p className="text-[10px] font-black text-white">180D</p>
+                <div className="flex justify-between items-center p-3 bg-slate-800/30 border border-white/5 rounded-xl">
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Signal Decay Window</p>
+                  <p className="text-[10px] font-black text-slate-400">30–180 Days</p>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-blue-600/5 border border-blue-500/10 rounded-xl">
                   <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Next Open Window</p>
@@ -390,10 +396,12 @@ const DecisionInstrument = ({ state, windowEst, isAnalystView, chips, appWindow 
 };
 
 export function FullReviewView(props: FullReviewViewProps) {
-  const { result, plan, onUpgrade, onRebuildRequest, setView, analysisHistory, setActiveAnalysisId } = props;
+  const { result, plan, onUpgrade, onRebuildRequest, setView, analysisHistory, setActiveAnalysisId, activeRebuild } = props;
   const [activePersona, setActivePersona] = useState<'FAANG' | 'STARTUP' | 'AI_TEAM'>('FAANG');
   const [isIntervening, setIsIntervening] = useState(false);
   const [isAnalystView, setIsAnalystView] = useState(false);
+  const [sortSignalsBy, setSortSignalsBy] = useState<'score' | 'impact' | 'effort'>('score');
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Sorted history entries for the dropdown selector (newest first)
   const historyEntries = analysisHistory
@@ -405,26 +413,93 @@ export function FullReviewView(props: FullReviewViewProps) {
     : [];
   const hasHistory = historyEntries.length > 1;
 
+  // Auto-load most recent analysis if result is null but history exists (Fix 5b)
+  const mostRecentEntry = historyEntries[0];
+  React.useEffect(() => {
+    if (!result && mostRecentEntry && setActiveAnalysisId) {
+      setActiveAnalysisId(mostRecentEntry[0]);
+    }
+  }, []);
+
+  const ARCHETYPES = [
+    { label: 'Mid-Level Engineer', description: '3–5 years, targeting Staff/L5', icon: '⚙️' },
+    { label: 'Senior Being Laid Off', description: 'Transitioning, 8+ years experience', icon: '🔄' },
+    { label: 'Career Switcher to AI', description: 'Pivoting to ML/AI engineering', icon: '🤖' },
+  ];
+
+  const QUICK_WINS = [
+    'Add quantified metrics to every bullet (e.g., "reduced latency by 40%")',
+    'Remove personal pronouns — use action verbs (Led, Architected, Delivered)',
+    'Ensure contact section has LinkedIn URL + GitHub link for tech roles',
+  ];
+
   if (!result) {
     return (
-      <div className="max-w-4xl mx-auto py-40 text-center">
-        <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-8 border border-slate-800">
-          <ShieldCheck className="text-slate-600" size={32} />
+      <div className="max-w-4xl mx-auto py-20 px-10 animate-in fade-in duration-700">
+        <div className="text-center mb-12">
+          <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-8 border border-slate-800">
+            <ShieldCheck className="text-slate-600" size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-tight">System Loop Inactive</h2>
+          <p className="text-slate-500 font-medium mb-8">Initialize outcome control to generate deterministic hiring forecasts.</p>
+          <button
+            onClick={() => setView?.('ai-review')}
+            className="bg-blue-600 text-white font-black py-4 px-10 rounded-2xl transition-all shadow-xl shadow-blue-900/20 uppercase tracking-widest text-xs flex items-center gap-3 mx-auto"
+          >
+            <Plus size={18} /> Initialize Assessment
+          </button>
         </div>
-        <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-tight">System Loop Inactive</h2>
-        <p className="text-slate-500 font-medium mb-8">Initialize outcome control to generate deterministic hiring forecasts.</p>
-        <button
-          onClick={() => setView?.('ai-review')}
-          className="bg-blue-600 text-white font-black py-4 px-10 rounded-2xl transition-all shadow-xl shadow-blue-900/20 uppercase tracking-widest text-xs flex items-center gap-3 mx-auto"
-        >
-          <Plus size={18} /> Initialize Assessment
-        </button>
+
+        {/* Archetype quick-start cards */}
+        <div className="mb-10">
+          <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em] text-center mb-6">Or start with a profile archetype</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {ARCHETYPES.map((a, i) => (
+              <button
+                key={i}
+                onClick={() => setView?.('ai-review')}
+                className="p-6 bg-[#16161E] border border-white/5 hover:border-blue-500/30 rounded-2xl text-left transition-all hover:-translate-y-1"
+              >
+                <span className="text-2xl mb-3 block">{a.icon}</span>
+                <p className="text-white font-black text-xs uppercase tracking-widest mb-1">{a.label}</p>
+                <p className="text-slate-500 text-[10px] font-medium">{a.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Universal Quick Wins */}
+        <div className="bg-[#16161E] border border-green-500/10 rounded-[2rem] p-8">
+          <div className="flex items-center gap-2 mb-5">
+            <Zap size={14} className="text-green-400" />
+            <p className="text-[10px] font-black text-green-400 uppercase tracking-[0.3em]">Universal Quick Wins</p>
+          </div>
+          <div className="space-y-3">
+            {QUICK_WINS.map((w, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <CheckCircle2 size={14} className="text-green-400 shrink-0 mt-0.5" />
+                <p className="text-slate-400 text-[11px] font-medium leading-relaxed">{w}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   const isStarter = plan === 'Starter';
-  const points = result.eightPoints || [];
+  const points = [...(result.eightPoints || [])];
+  
+  if (result.jdMatchScore) {
+    points.push({
+      id: 'jd-match',
+      name: 'JD Grounding & Keyword Match',
+      score: result.jdMatchScore.score,
+      explanation: `Keyword Hit Rate: ${result.jdMatchScore.keywordHitRate}. Missing: ${result.jdMatchScore.missingKeywords.join(', ')}. ${result.jdMatchScore.stuffingRisk ? 'WARNING: High stuffing risk detected.' : ''}`,
+      riskHint: 'Critical for bypassing ATS semantic filters.'
+    });
+  }
+
   const overallScore = result.overallScore;
 
   const maturityPoint = points.find(p => p.name.toLowerCase().includes('maturity') || p.name.toLowerCase().includes('leadership'));
@@ -451,13 +526,14 @@ export function FullReviewView(props: FullReviewViewProps) {
   const hiringState = overallScore >= 85 ? 'SAFE TO APPLY' : (overallScore >= 70 ? 'TRANSITIONAL' : 'NOT SAFE TO APPLY');
   const safetyColor = hiringState === 'SAFE TO APPLY' ? 'text-green-500' : (hiringState === 'TRANSITIONAL' ? 'text-amber-500' : 'text-red-500');
 
-  // ─── Persona forecasts: pipeline-driven or graceful "Analyzing..." fallback ───
-  const PERSONA_FALLBACK: Record<'FAANG' | 'STARTUP' | 'AI_TEAM', PersonaForecast> = {
-    FAANG: { sentiment: 'neutral', observation: 'Run a new analysis to generate FAANG-specific insights.', fix: 'Re-run analysis for personalized recommendations.', delta: '—' },
-    STARTUP: { sentiment: 'neutral', observation: 'Run a new analysis to generate Startup-specific insights.', fix: 'Re-run analysis for personalized recommendations.', delta: '—' },
-    AI_TEAM: { sentiment: 'neutral', observation: 'Run a new analysis to generate AI Team-specific insights.', fix: 'Re-run analysis for personalized recommendations.', delta: '—' },
+  // ─── Persona forecasts: pipeline-driven or graceful skeleton fallback ───
+  // Never show "Run a new analysis" text — show skeleton animation instead.
+  const personaForecasts: Record<'FAANG' | 'STARTUP' | 'AI_TEAM', PersonaForecast> = result.personaForecasts ?? {
+    FAANG: { sentiment: 'neutral', observation: '', fix: '', delta: '—' },
+    STARTUP: { sentiment: 'neutral', observation: '', fix: '', delta: '—' },
+    AI_TEAM: { sentiment: 'neutral', observation: '', fix: '', delta: '—' },
   };
-  const personaForecasts: Record<'FAANG' | 'STARTUP' | 'AI_TEAM', PersonaForecast> = result.personaForecasts ?? PERSONA_FALLBACK;
+  const isPersonaEmpty = (p: PersonaForecast) => !p.fix || p.fix.includes('Re-run') || p.observation === '';
 
   const handleIntervention = () => {
     setIsIntervening(true);
@@ -493,7 +569,6 @@ export function FullReviewView(props: FullReviewViewProps) {
           >
             <Plus size={14} /> Run New Analysis
           </button>
-          {/* FIX 4: History selector — allows switching between past analyses without leaving this view */}
           {hasHistory && setActiveAnalysisId && (
             <div className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-[1.5rem] bg-white/5">
               <History size={13} className="text-slate-500 shrink-0" />
@@ -510,12 +585,55 @@ export function FullReviewView(props: FullReviewViewProps) {
               </select>
             </div>
           )}
+          {/* Share Analysis button */}
+          <button
+            onClick={() => {
+              const url = `${window.location.origin}${window.location.pathname}?share=${result?.analysisId || ''}`;
+              navigator.clipboard.writeText(url).then(() => {
+                setShareCopied(true);
+                setTimeout(() => setShareCopied(false), 2500);
+              });
+            }}
+            className="px-5 py-3 rounded-[1.5rem] text-[11px] font-black uppercase tracking-widest transition-all border border-slate-700 text-slate-400 hover:border-blue-500/40 hover:text-blue-400 flex items-center gap-2"
+          >
+            <Eye size={13} /> {shareCopied ? 'Link Copied!' : 'Share'}
+          </button>
         </div>
         <div className="flex items-center gap-3 text-slate-700">
           <Activity size={14} />
           <span className="text-[10px] font-black uppercase tracking-[0.4em]">Audit: {result.analysisId?.slice(0, 8)}</span>
         </div>
       </div>
+
+      {/* JD Warning Banner — shown when no JD has been paired with this analysis */}
+      <div className="mb-8 flex items-center gap-4 bg-amber-500/5 border border-amber-500/15 rounded-2xl px-6 py-4">
+        <AlertCircle size={16} className="text-amber-500 shrink-0" />
+        <p className="text-amber-400 text-[11px] font-medium leading-relaxed">
+          Analysis without a target role produces generic results.{' '}
+          <button onClick={() => setView?.('ai-review')} className="underline font-black hover:text-white transition-colors">Add a job description</button>{' '}for 3× more accurate signal scoring.
+        </p>
+      </div>
+
+      {/* Rebuild Applied Banner — shown when a rebuild links to this analysis */}
+      {activeRebuild && activeRebuild.linkedAnalysisId === result.analysisId && (
+        <div className="mb-8 flex items-center justify-between gap-4 bg-green-500/5 border border-green-500/20 rounded-2xl px-6 py-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 size={16} className="text-green-400 shrink-0" />
+            <div>
+              <p className="text-green-400 font-black text-[10px] uppercase tracking-widest">Rebuild Applied</p>
+              <p className="text-slate-400 text-[11px] font-medium">
+                Score lifted: <span className="text-red-400 font-black">{activeRebuild.scoreBefore}%</span>
+                {' → '}
+                <span className="text-green-400 font-black">{activeRebuild.scoreAfter}%</span>
+                {' '}(+{activeRebuild.scoreAfter - activeRebuild.scoreBefore} pts)
+              </p>
+            </div>
+          </div>
+          <button onClick={() => setView?.('rebuild-standalone')} className="text-green-400 hover:text-white text-[10px] font-black uppercase tracking-widest border border-green-500/20 px-4 py-2 rounded-xl transition-all">
+            View Rebuilt Resume →
+          </button>
+        </div>
+      )}
 
       {/* TIER 1: THE DECISION INSTRUMENT */}
       <DecisionInstrument state={clockState} windowEst={windowEst} isAnalystView={isAnalystView} chips={chips} appWindow={appWindow} />
@@ -544,6 +662,24 @@ export function FullReviewView(props: FullReviewViewProps) {
               ))}
             </div>
             <div className="p-10 space-y-8 animate-in fade-in duration-500">
+              {isPersonaEmpty(personaForecasts[activePersona]) ? (
+                // Skeleton state — shown when pipeline didn't return persona data
+                <div className="space-y-4 animate-pulse">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-10">
+                    {['Sentiment', 'Delta', 'Required Intervention', ''].map((label, i) => (
+                      <div key={i} className={`space-y-2 ${i === 2 ? 'col-span-2' : ''}`}>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
+                        <div className="h-5 bg-slate-800 rounded-lg w-3/4" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="bg-white/5 p-8 rounded-3xl border border-white/10">
+                    <div className="h-4 bg-slate-800 rounded-lg w-full mb-2" />
+                    <div className="h-4 bg-slate-800 rounded-lg w-4/5" />
+                  </div>
+                  <p className="text-[9px] text-slate-700 uppercase tracking-widest text-center font-black">Analyzing persona data…</p>
+                </div>
+              ) : (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-10">
                 <div className="space-y-2">
                   <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Sentiment</p>
@@ -567,8 +703,9 @@ export function FullReviewView(props: FullReviewViewProps) {
                   <p className="text-white text-sm font-bold leading-relaxed">{personaForecasts[activePersona].fix}</p>
                 </div>
               </div>
+              )}
 
-              {isAnalystView && (
+              {isAnalystView && !isPersonaEmpty(personaForecasts[activePersona]) && (
                 <div className="bg-white/5 p-8 rounded-3xl border border-white/10 flex items-start gap-5">
                   <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-slate-500 shrink-0">
                     <UserCheck size={20} />
@@ -607,22 +744,64 @@ export function FullReviewView(props: FullReviewViewProps) {
                   <p className="text-4xl font-black text-red-500 uppercase">Blocked</p>
                 </div>
               </div>
+
+              {/* Before/After Signal Delta */}
+              {chokepoint && (
+                <div className="mt-6 grid grid-cols-3 gap-4">
+                  <div className="bg-red-500/5 border border-red-500/20 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mb-1">Current Signal</p>
+                    <p className="text-2xl font-black text-red-400">{chokepoint.score}</p>
+                    <p className="text-[9px] text-slate-600 mt-1">Pass Threshold: 85</p>
+                  </div>
+                  <div className="flex items-center justify-center">
+                    <ArrowRight size={24} className="text-slate-700" />
+                  </div>
+                  <div className="bg-green-500/5 border border-green-500/20 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-green-500 uppercase tracking-widest mb-1">After Rebuild</p>
+                    <p className="text-2xl font-black text-green-400">
+                      {Math.min(chokepoint.score + (result.estimatedDelta?.chokepoint ?? result.estimatedDelta?.[chokepoint.name] ?? 18), 97)}
+                    </p>
+                    <p className="text-[9px] text-slate-600 mt-1">Projected Score</p>
+                  </div>
+                </div>
+              )}
+              <p className="text-[9px] text-slate-700 font-medium mt-3 text-center italic">Projection based on your specific gaps.</p>
             </div>
           </div>
 
           {/* SIGNAL MAP */}
           <div className="space-y-8">
-            <div className="flex items-center justify-between px-2">
+            <div className="flex flex-wrap items-center justify-between px-2 gap-4">
               <h3 className="text-white font-black text-2xl uppercase tracking-tight">Signal Intervention Map</h3>
               <div className="flex items-center gap-3">
+                {/* Sort control */}
+                <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5">
+                  {(['score', 'impact', 'effort'] as const).map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setSortSignalsBy(s)}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                        sortSignalsBy === s ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-white'
+                      }`}
+                    >
+                      {s === 'score' ? 'Score' : s === 'impact' ? 'Impact' : 'Effort'}
+                    </button>
+                  ))}
+                </div>
                 <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Pass Threshold</span>
                 <span className="text-[11px] font-black text-green-500 uppercase tracking-widest border border-green-500/20 px-3 py-1 rounded-full">85% SCORE</span>
               </div>
             </div>
             <div className="space-y-6">
-              {points.map(p => (
-                <PointWidget key={p.id} point={p} isStarter={isStarter} isChokepoint={chokepoint?.id === p.id} onUpgrade={onUpgrade} isAnalystView={isAnalystView} atomicChanges={result.atomicChanges} />
-              ))}
+              {[...points]
+                .sort((a, b) => {
+                  if (sortSignalsBy === 'score') return a.score - b.score; // lowest first (most critical)
+                  if (sortSignalsBy === 'impact') return a.score - b.score; // same as score for now
+                  return 0; // effort — no server-side data yet, keep original order
+                })
+                .map(p => (
+                  <PointWidget key={p.id} point={p} isStarter={isStarter} isChokepoint={chokepoint?.id === p.id} onUpgrade={onUpgrade} isAnalystView={isAnalystView} atomicChanges={result.atomicChanges} />
+                ))}
             </div>
           </div>
         </div>
@@ -642,19 +821,31 @@ export function FullReviewView(props: FullReviewViewProps) {
               </div>
 
               <div className="space-y-4">
-                {[
-                  { label: "Architectural Injection", impact: "+22%" },
-                  { label: "Seniority Calibration", impact: "+12%" },
-                  { label: "ATS Layer Hardening", impact: "+6%" }
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                    <div>
-                      <p className="text-white font-bold text-xs">{item.label}</p>
-                      <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mt-1">Action Required</p>
+                {result.recoveryPath && result.recoveryPath.length > 0 ? (
+                  result.recoveryPath.map((item, i) => (
+                    <div key={i} className="flex items-start justify-between p-4 bg-white/5 rounded-2xl border border-white/5 gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-bold text-xs leading-snug">{item.action}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            item.effort === 'low' ? 'bg-green-500/10 text-green-500' :
+                            item.effort === 'medium' ? 'bg-amber-500/10 text-amber-500' :
+                            'bg-red-500/10 text-red-500'
+                          }`}>{item.effort} effort</span>
+                          <span className="text-slate-600 text-[9px] font-black uppercase tracking-widest">{item.dimension}</span>
+                        </div>
+                      </div>
+                      <span className="text-blue-400 font-black text-sm shrink-0">+{item.impactScore} pts</span>
                     </div>
-                    <span className="text-blue-400 font-black text-sm">{item.impact}</span>
+                  ))
+                ) : (
+                  <div className="bg-[#0D0D12] p-8 rounded-2xl border border-white/5 text-center">
+                    <RefreshCcw size={18} className="text-slate-700 mx-auto mb-3" />
+                    <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest">
+                      Run a fresh analysis to generate your personalized recovery path
+                    </p>
                   </div>
-                ))}
+                )}
               </div>
 
               <div className="pt-6 border-t border-white/5">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import {
   ArrowRight, Sparkles, ShieldCheck, Briefcase, Linkedin,
   FileText, TrendingUp, Check, ChevronRight, Star, Zap, AlertTriangle, Users, Timer,
@@ -68,17 +68,20 @@ const FAQSection: React.FC = () => {
                   <Plus size={13} className={open === i ? 'text-blue-400' : 'text-slate-500'} />
                 </div>
               </button>
-              {open === i && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="px-6 pb-6"
-                >
-                  <p className="text-slate-400 text-sm leading-relaxed border-t border-white/5 pt-4">{item.a}</p>
-                </motion.div>
-              )}
+              <AnimatePresence>
+                {open === i && (
+                  <motion.div
+                    key="faq-content"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="px-6 pb-6"
+                  >
+                    <p className="text-slate-400 text-sm leading-relaxed border-t border-white/5 pt-4">{item.a}</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           ))}
         </div>
@@ -91,6 +94,7 @@ const FAQSection: React.FC = () => {
 const Counter: React.FC<{ to: number; suffix?: string; duration?: number }> = ({ to, suffix = '', duration = 2000 }) => {
   const [val, setVal] = useState(0);
   const ref = useRef<HTMLSpanElement>(null);
+  const rafRef = useRef<number | null>(null);
   useEffect(() => {
     const obs = new IntersectionObserver(([e]) => {
       if (!e.isIntersecting) return;
@@ -99,25 +103,42 @@ const Counter: React.FC<{ to: number; suffix?: string; duration?: number }> = ({
       const tick = () => {
         const p = Math.min((Date.now() - start) / duration, 1);
         setVal(Math.floor(p * to));
-        if (p < 1) requestAnimationFrame(tick);
+        if (p < 1) rafRef.current = requestAnimationFrame(tick);
       };
-      requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame(tick);
     }, { threshold: 0.3 });
     if (ref.current) obs.observe(ref.current);
-    return () => obs.disconnect();
+    return () => {
+      obs.disconnect();
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, [to, duration]);
   return <span ref={ref}>{val.toLocaleString()}{suffix}</span>;
 };
 
 /* ─── Tool card ─── */
-const ToolCard: React.FC<{ icon: any; title: string; pain: string; solution: string; color: string }> = ({ icon: Icon, title, pain, solution, color }) => (
-  <div className="bg-[#111118] border border-white/5 rounded-2xl p-6 hover:border-white/10 transition-all group hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30">
+const ToolCard: React.FC<{ icon: any; title: string; pain: string; solution: string; color: string; timeLabel?: string; outcome?: string; mostUsed?: boolean }> = ({ icon: Icon, title, pain, solution, color, timeLabel, outcome, mostUsed }) => (
+  <div className="relative bg-[#111118] border border-white/5 rounded-2xl p-6 hover:border-white/10 transition-all group hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30">
+    {mostUsed && (
+      <div className="absolute -top-3 left-6 inline-flex items-center gap-1.5 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-[0_0_12px_rgba(37,99,235,0.6)]">
+        <Star size={9} className="fill-white" /> Most Used
+      </div>
+    )}
     <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
       <Icon size={18} className="text-white"/>
     </div>
     <p className="text-white font-bold text-base mb-2">{title}</p>
+    {outcome && <p className="text-slate-200 text-sm font-semibold mb-2">{outcome}</p>}
     <p className="text-red-400 text-xs mb-3 flex items-start gap-1.5"><AlertTriangle size={11} className="mt-0.5 shrink-0"/>{pain}</p>
     <p className="text-slate-400 text-sm leading-relaxed">{solution}</p>
+    {timeLabel && (
+      <div className="mt-4 flex items-center gap-1.5">
+        <Clock size={11} className="text-slate-600" />
+        <p className="text-[10px] text-slate-500">
+          <span className="text-white font-bold">{timeLabel}</span> to set up
+        </p>
+      </div>
+    )}
   </div>
 );
 
@@ -507,17 +528,16 @@ const BeforeAfter = () => (
             </motion.div>
           ))}
         </div>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between"
+          className="mt-8 pt-6 border-t border-white/5 space-y-2"
         >
-          <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Interview Rate</p>
-          <div className="flex flex-col items-end">
-            <p className="text-red-400 font-black text-2xl">2%</p>
-            <p className="text-slate-600 text-[10px] uppercase font-bold tracking-widest">Filtered by ATS</p>
-          </div>
+          <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">Why It Gets Rejected</p>
+          <p className="text-red-400 text-sm">ATS Survivability: 23% — auto-rejected before human review</p>
+          <p className="text-amber-400 text-sm">Keyword Match: 0 of 12 required terms found</p>
+          <p className="text-red-400 text-sm">Signal Density: passive language, no quantified impact</p>
         </motion.div>
       </div>
     </motion.div>
@@ -559,17 +579,16 @@ const BeforeAfter = () => (
             </motion.div>
           ))}
         </div>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           whileInView={{ opacity: 1, scale: 1 }}
           transition={{ delay: 1.2, type: 'spring' }}
-          className="mt-6 pt-6 border-t border-white/5 flex items-center justify-between"
+          className="mt-6 pt-6 border-t border-white/5 space-y-2"
         >
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Interview Rate</p>
-          <div className="flex flex-col items-end">
-            <p className="text-green-400 font-black text-3xl drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]">34%</p>
-            <p className="text-green-500/70 text-[10px] uppercase font-bold tracking-widest">Top 5% Candidate</p>
-          </div>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">After Rebuild</p>
+          <p className="text-green-400 text-sm">ATS Survivability: 91% — machine-readable and keyword-matched</p>
+          <p className="text-green-400 text-sm">Keyword Match: 10 of 12 required terms naturally integrated</p>
+          <p className="text-green-400 text-sm">Signal Density: 7 quantified metrics, 9 ownership verbs</p>
         </motion.div>
       </div>
     </motion.div>
@@ -645,11 +664,13 @@ const WhoIsThisFor = () => (
 /* ─── Main Landing Page ─── */
 export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onViewTerms, onViewPrivacy, onViewRefund }) => {
   const [activePain, setActivePain] = useState(0);
+  const [showSticky, setShowSticky] = useState(false);
   const pains = [
-    'Applying to 50 jobs. Getting 0 responses.',
-    'Rejected before a human reads your resume.',
-    'Your LinkedIn is invisible to recruiters.',
-    'Losing offers to candidates with identical skills.',
+    'Sending 60 applications. Getting 2 responses. Something is wrong.',
+    'Rejected before a human ever reads your name.',
+    '250 other engineers applied to that same role today.',
+    'Your LinkedIn is invisible. You don\'t even show up in searches.',
+    'You\'re not underqualified. Your resume just can\'t survive the filter.',
   ];
 
   useEffect(() => {
@@ -657,8 +678,44 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    const handleScroll = () => setShowSticky(window.scrollY > 600);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
     <div className="bg-[#0A0A0F] min-h-screen font-sans selection:bg-blue-500/30 selection:text-white">
+
+      {/* ── STICKY HEADER ── */}
+      <AnimatePresence>
+        {showSticky && (
+          <motion.div
+            key="sticky-header"
+            initial={{ y: -60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="fixed top-0 left-0 right-0 z-[100] bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/10 py-3 px-6 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-lg overflow-hidden border border-[#2D313D] bg-[#0E1118] flex items-center justify-center">
+                <img src="/favicon.png" alt="HireMax" className="w-full h-full object-cover" loading="lazy" />
+              </div>
+              <p className="text-white font-black text-sm tracking-tight">HireMax</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <p className="text-slate-400 text-xs hidden md:block">Free analysis · No credit card</p>
+              <button
+                onClick={onGetStarted}
+                className="bg-white text-black font-black text-xs px-5 py-2.5 rounded-lg hover:bg-blue-50 transition-colors uppercase tracking-wide"
+              >
+                Get Free Score →
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── SIMPLE TOP BAR ── */}
       <div className="absolute top-0 left-0 right-0 px-6 py-6 flex justify-between items-center z-50 max-w-7xl mx-auto">
@@ -681,15 +738,15 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="relative z-10">
           <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-2 mb-10">
             <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-            <p className="text-blue-300 text-xs font-bold tracking-wide">AI-Powered Career Intelligence · No fluff, just data</p>
+            <p className="text-blue-300 text-xs font-bold tracking-wide">2026 Job Market: 250+ applicants per role at tech companies</p>
           </div>
 
           <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter text-white max-w-5xl mx-auto leading-[1.05] mb-8">
-            Stop Getting{' '}
+            You're Being{' '}
             <span className="relative inline-block">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-violet-400">Ignored.</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-red-400 via-rose-400 to-orange-400">Auto-Rejected</span>
             </span>
-            <br />Start Getting Interviews.
+            <br />Before Anyone Reads Your Name.
           </h1>
 
           <div className="flex items-center justify-center gap-3 mb-10 h-8">
@@ -700,53 +757,30 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
           </div>
 
           <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto mb-12 leading-relaxed">
-            HireMax is the only platform that rebuilds your resume, preps you for every interview round, 
-            writes your cover letters, and tracks your entire job search — all in one place.
+            HireMax shows you exactly where your resume fails — ATS system by system, line by line — then rebuilds it with AI to fix every gap. Not a score. A diagnosis.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
             <button onClick={onGetStarted}
               className="group flex items-center gap-3 bg-white text-black font-black text-lg px-10 py-5 rounded-2xl transition-all shadow-[0_0_40px_rgba(255,255,255,0.15)] hover:shadow-[0_0_60px_rgba(255,255,255,0.25)] hover:-translate-y-0.5">
-              Get Your Free Reality Score
+              Get My Free Diagnosis
               <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform"/>
             </button>
             <button onClick={onViewPlans} className="flex items-center justify-center gap-2 text-white bg-white/5 hover:bg-white/10 border border-white/10 text-base font-bold px-10 py-5 rounded-2xl transition-colors">
-              View Pricing
+              See How It Works
             </button>
           </div>
 
-          <p className="text-slate-500 text-sm font-medium">No credit card required · Free plan available · Results in 60 seconds</p>
+          <p className="text-slate-500 text-sm font-medium">Join engineers from Google, Meta, Stripe, and Coinbase who used HireMax during their layoff searches</p>
+          <p className="text-slate-600 text-xs mt-2">Free analysis in 60 seconds · No credit card · No fluff, just data</p>
         </motion.div>
       </section>
 
       <TrustIndicators />
+      <WhoIsThisFor />
       <ProblemSection />
       <ScreeningPipeline />
       <ResumeDemoSection id="how-it-works" />
-
-      {/* ── 6 TOOLS ── */}
-      <section id="features" className="py-24 px-6 bg-[#0A0A0F] relative">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-violet-600/5 rounded-full blur-[150px] pointer-events-none"/>
-        <div className="max-w-6xl mx-auto relative z-10">
-          <div className="text-center mb-16">
-            <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-3">The Complete Career OS</p>
-            <h2 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-6">
-              Every tool you need.<br className="hidden sm:block"/> One platform.
-            </h2>
-            <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
-              Other platforms solve one problem. HireMax covers your entire job search — resume to offer.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <ToolCard icon={Sparkles}    color="bg-blue-500"    title="AI Resume Rebuild"      pain="Your resume is buried in the ATS." solution="Our AI rewrites every bullet with impact metrics, action verbs, and role-matched keywords — optimized for ATS survivability."/>
-            <ToolCard icon={ShieldCheck} color="bg-violet-500"  title="Interview Prep Kit"     pain="You're giving generic answers." solution="Get a 5-tab kit with real questions per round, coached STAR frameworks, and what NOT to say — built from the job description."/>
-            <ToolCard icon={FileText}    color="bg-green-500"   title="Cover Letter Engine"    pain="You're sending generic templates." solution="Every letter maps your specific resume bullets to exact JD requirements. Evidence-based, not fluff."/>
-            <ToolCard icon={Briefcase}   color="bg-amber-500"   title="Application Tracker"    pain="You've lost track of your applications." solution="Kanban pipeline with AI-drafted follow-ups and overdue reminders. No opportunity slips through the cracks."/>
-            <ToolCard icon={Linkedin}    color="bg-sky-500"     title="LinkedIn Optimizer"     pain="You aren't showing up in recruiter searches." solution="We score 50 keyword dimensions by recruiter search volume and show exactly which fields to update."/>
-            <ToolCard icon={TrendingUp}  color="bg-indigo-500"  title="Market Intelligence"    pain="You're negotiating blind." solution="Salary bands, hiring velocity by company stage, and skill demand by role — so you always know your real market value."/>
-          </div>
-        </div>
-      </section>
 
       {/* ── BEFORE / AFTER ── */}
       <section className="py-24 px-6 bg-[#0D0D14] border-t border-white/5">
@@ -762,7 +796,30 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
         <BeforeAfter/>
       </section>
 
-      <WhoIsThisFor />
+      {/* ── 6 TOOLS ── */}
+      <section id="features" className="py-24 px-6 bg-[#0A0A0F] relative">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-violet-600/5 rounded-full blur-[150px] pointer-events-none"/>
+        <div className="max-w-6xl mx-auto relative z-10">
+          <div className="text-center mb-16">
+            <p className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-3">The Complete Career OS</p>
+            <h2 className="text-4xl md:text-5xl font-black text-white tracking-tight mb-6">
+              Every tool you need.<br className="hidden sm:block"/> One platform.
+            </h2>
+            <p className="text-slate-400 text-lg max-w-2xl mx-auto leading-relaxed">
+              Other platforms solve one problem. HireMax covers your entire job search — resume to offer.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            <ToolCard icon={Sparkles}    color="bg-blue-500"    title="AI Resume Rebuild"      mostUsed outcome="Resume goes from ATS-invisible to ATS-optimized" timeLabel="15 min" pain="Your resume is buried in the ATS." solution="Our AI rewrites every bullet with impact metrics, action verbs, and role-matched keywords — optimized for ATS survivability."/>
+            <ToolCard icon={ShieldCheck} color="bg-violet-500"  title="Interview Prep Kit"     outcome="Answer every question from YOUR resume, not a template" timeLabel="20 min" pain="You're giving generic answers." solution="Get a 5-tab kit with real questions per round, coached STAR frameworks, and what NOT to say — built from the job description."/>
+            <ToolCard icon={FileText}    color="bg-green-500"   title="Cover Letter Engine"    outcome="Every letter maps your bullets to exact JD requirements" timeLabel="5 min" pain="You're sending generic templates." solution="Every letter maps your specific resume bullets to exact JD requirements. Evidence-based, not fluff."/>
+            <ToolCard icon={Briefcase}   color="bg-amber-500"   title="Application Tracker"    outcome="No opportunity slips through the cracks" timeLabel="2 min" pain="You've lost track of your applications." solution="Kanban pipeline with AI-drafted follow-ups and overdue reminders. No opportunity slips through the cracks."/>
+            <ToolCard icon={Linkedin}    color="bg-sky-500"     title="LinkedIn Optimizer"     outcome="Start showing up in recruiter searches" timeLabel="10 min" pain="You aren't showing up in recruiter searches." solution="We score 50 keyword dimensions by recruiter search volume and show exactly which fields to update."/>
+            <ToolCard icon={TrendingUp}  color="bg-indigo-500"  title="Market Intelligence"    outcome="Know your real market value before you negotiate" timeLabel="Instant" pain="You're negotiating blind." solution="Salary bands, hiring velocity by company stage, and skill demand by role — so you always know your real market value."/>
+          </div>
+        </div>
+      </section>
+
       <FAQSection />
 
       {/* ── FINAL CTA ── */}

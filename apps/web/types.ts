@@ -56,7 +56,58 @@ export interface DbExecutionLog {
   created_at: string;
 }
 
-export type JobType = 'ANALYSIS' | 'REBUILD' | 'OUTLOOK' | 'INGESTION' | 'EXECUTION' | 'PREP' | 'COVER_LETTER' | 'LINKEDIN';
+export type JobType = 'ANALYSIS' | 'REBUILD' | 'OUTLOOK' | 'INGESTION' | 'EXECUTION' | 'PREP' | 'COVER_LETTER' | 'LINKEDIN' | 'JD_PARSE';
+
+// ─── JD Analysis Types ────────────────────────────────────────────────────────
+
+export interface JDParsed {
+  company: string;
+  role: string;
+  seniorityLevel: string;         // e.g. "IC4 / Senior"
+  mustHaveKeywords: string[];
+  niceToHaveKeywords: string[];
+}
+
+export interface JDMatchScore {
+  score: number;                  // 0–100
+  keywordHitRate: string;         // e.g. "12 of 18 critical keywords found"
+  missingKeywords: string[];      // top 5 missing
+  stuffingRisk: boolean;          // true if keyword density is unnaturally high
+}
+
+// ─── Recovery Path Types ──────────────────────────────────────────────────────
+
+export interface RecoveryPathItem {
+  action: string;                 // "Add 'distributed systems' to Experience bullet 3"
+  impactScore: number;            // estimated score delta: 4–18 points
+  effort: 'low' | 'medium' | 'high';
+  dimension: string;              // which of the 8 points this fixes
+}
+
+// ─── Estimated Delta Per Dimension ────────────────────────────────────────────
+
+export interface EstimatedDelta {
+  chokepoint?: number;
+  [dimension: string]: number | undefined;
+}
+
+// ─── Rebuild Signal Delta Types ───────────────────────────────────────────────
+
+export interface SignalDeltaChange {
+  category: string;               // e.g. "Ownership Language"
+  before: string | number;
+  after: string | number;
+  unit: string;                   // e.g. "ownership verbs"
+  impact: 'Critical' | 'High' | 'Medium' | 'Low';
+}
+
+export interface SignalDelta {
+  scoreBefore: number;
+  scoreAfter: number;
+  changes: SignalDeltaChange[];
+  topImprovements: string[];
+  warningsKept: string[];
+}
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PAUSED' | 'THROTTLED';
 
 // Added BackgroundJob interface to fix missing import errors in App.tsx and other views
@@ -221,6 +272,39 @@ export interface DiagnosticResult {
   applicationWindow?: ApplicationWindow;
   decisionOutput?: DecisionOutput;
   jobContext?: JobContext;
+  // ── JD-grounded analysis fields ──
+  jdMatchScore?: JDMatchScore;            // 9th signal: JD keyword match
+  recoveryPath?: RecoveryPathItem[];      // pipeline-driven recovery actions
+  estimatedDelta?: EstimatedDelta;        // per-dimension score projections
+
+  // ── Hybrid Engine Fields ──
+  compositeScore?: number;
+  precisionScore?: number;
+  semanticScore?: number;
+  achievementScore?: number;
+  seniorityScore?: number;
+  narrativeScore?: number;
+  mandatoryCoverage?: number;
+  preferredCoverage?: number;
+  implicitCoverage?: number;
+  criticalMisses?: string[];
+  optionalMisses?: string[];
+  matchedTerms?: string[];
+  documentSemanticScore?: number;
+  summarySemanticScore?: number;
+  chokepoint?: string;
+  chokepointCategory?: string;
+  seniorityCalibration?: string;
+  screeningProbability?: number;
+  rewriteMandates?: any[];
+  achievementDensity?: number;
+  bulletCount?: number;
+  quantifiedBulletCount?: number;
+  careerProgression?: string;
+  inferredJDSeniority?: string;
+  resumeSeniority?: string;
+  executiveSummary?: string;
+  jdText?: string;
 }
 
 export interface ResumeGroup { id: string; name: string; versions: ResumeVersion[]; }

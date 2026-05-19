@@ -45,6 +45,7 @@ import { AppView, DiagnosticResult, UserPlan, ResumeGroup, ResumeVersion, Resume
 import { supabase } from './lib/supabase';
 import { QUICK_ACTIONS } from './constants';
 import { isAdminUser } from './lib/admin';
+import { runFastVerify } from './lib/hybridEngine';
 
 
 function App() {
@@ -59,6 +60,7 @@ function App() {
 
     const [analysisHistory, setAnalysisHistory] = useState<Record<string, DiagnosticResult>>({});
     const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
+    const [activeRebuild, setActiveRebuild] = useState<{ scoreBefore: number; scoreAfter: number; linkedAnalysisId: string } | null>(null);
 
     const [resumeHistory, setResumeHistory] = useState<ResumeGroup[]>([]);
     const [coverLetterHistory, setCoverLetterHistory] = useState<any[]>([]);
@@ -723,6 +725,7 @@ function App() {
                                         setView={handleSetView}
                                         analysisHistory={analysisHistory}
                                         setActiveAnalysisId={setActiveAnalysisId}
+                                        activeRebuild={activeRebuild}
                                     />
                                 </ErrorBoundary>
                             )}
@@ -751,11 +754,45 @@ function App() {
                             )}
                             {activeView === 'rebuild-standalone' && <RebuildStandaloneView
                                 plan={plan}
+                                activeAnalysis={currentAnalysis ? { targetRole: currentAnalysis.role || 'Executive', chokepoint: 'Strategic Scope', chokepointScore: 45, atsScore: currentAnalysis.score || 65 } : null}
                                 credits={profile && profile.credits ? profile.credits : 0}
                                 setCredits={async function (c) { }}
                                 onRebuildSuccess={async function (rebuilt: any, vid?: string, label?: string, gid?: string) {
                                     if (user) await fetchUserData(user);
                                     setPreFilledSource(null); // Clear context on success
+                                    
+                                    if (activeAnalysisId && currentAnalysis) {
+                                        // Reconstruct the text representation of the rebuilt structured resume
+                                        const contact = rebuilt.contact || {};
+                                        const summary = rebuilt.summary || '';
+                                        const expText = (rebuilt.experience || []).map((e: any) => `${e.title || ''} at ${e.organization || ''}: ${e.bullets?.join(' ') || ''}`).join('\n');
+                                        const eduText = (rebuilt.education || []).map((e: any) => `${e.degree || ''} from ${e.institution || ''}`).join('\n');
+                                        const projText = (rebuilt.projects || []).map((e: any) => `${e.title || ''}: ${e.description || ''}`).join('\n');
+                                        const skillsText = rebuilt.skills ? [
+                                            ...(rebuilt.skills.languages || []),
+                                            ...(rebuilt.skills.frameworks || []),
+                                            ...(rebuilt.skills.tools || []),
+                                            ...(rebuilt.skills.specializations || [])
+                                        ].join(', ') : '';
+                                        const rebuiltText = `${contact.full_name || ''}\n${summary}\n${expText}\n${eduText}\n${projText}\n${skillsText}`;
+
+                                        const baselineScore = currentAnalysis.precisionScore || currentAnalysis.score || 70;
+                                        const fastVerifyResult = runFastVerify(
+                                            rebuiltText,
+                                            currentAnalysis.jdText || '',
+                                            baselineScore
+                                        );
+
+                                        const scoreDelta = fastVerifyResult.scoreDelta;
+                                        const computedScoreAfter = Math.min(99, Math.max((currentAnalysis.score || 70) + scoreDelta, (currentAnalysis.score || 70)));
+
+                                        setActiveRebuild({
+                                            scoreBefore: currentAnalysis.score || 70,
+                                            scoreAfter: computedScoreAfter,
+                                            linkedAnalysisId: activeAnalysisId
+                                        });
+                                    }
+
                                     if (gid && vid) {
                                         setEditingResumeId(gid);
                                         setEditingVersionId(vid);

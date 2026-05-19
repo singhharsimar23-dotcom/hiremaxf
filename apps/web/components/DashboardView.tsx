@@ -39,11 +39,40 @@ const JOURNEY: Array<{ id: string; step: number; label: string; desc: string; vi
   { id:'linkedin', step:6, label:'LinkedIn Optimize',  desc:'Rank in recruiter searches',      view:'linkedin-optimizer', checkFn:()=>false },
 ];
 
+const UPSELL_CONTEXT: Record<string, { tool: string; benefit: string; time: string; }> = {
+  'rebuild-standalone': {
+    tool: 'AI Resume Rebuild',
+    benefit: 'Users who rebuild typically see their ATS score improve by 20-35 points in one session.',
+    time: '20 minutes to a fully rebuilt resume'
+  },
+  'interview-prep': {
+    tool: 'Interview Prep Kit',
+    benefit: 'Built from YOUR resume and the target JD — not generic questions.',
+    time: '15 minutes to a 5-tab prep kit'
+  },
+  'linkedin-optimizer': {
+    tool: 'LinkedIn Optimizer',
+    benefit: 'Over 75% of recruiters search LinkedIn before even posting a role.',
+    time: '10 minutes to rank in recruiter searches'
+  },
+};
+
 export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNavigate, user, history = [] }) => {
   const isPro = plan !== 'Starter';
   const [greeting, setGreeting] = useState('');
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [apps, setApps] = useState<any[]>([]);
+  const [upsellContext, setUpsellContext] = useState<{ tool: string; benefit: string; time: string; } | null>(null);
+  const [justCompleted, setJustCompleted] = useState<string | null>(null);
+
+  const handleLockedTool = (toolView: AppView) => {
+    const ctx = UPSELL_CONTEXT[toolView];
+    if (ctx) {
+      setUpsellContext(ctx);
+    } else {
+      onNavigate('pricing');
+    }
+  };
 
   // Derive first name from user metadata
   const firstName = user?.user_metadata?.full_name?.split(' ')[0]
@@ -69,8 +98,23 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
   }, [user]);
 
   const score = currentAnalysis?.overallScore || 0;
-  const stepsCompleted = JOURNEY.filter(j => j.checkFn(currentAnalysis, apps, history)).length;
+  const completedIds = useMemo(() => JOURNEY.filter(j => j.checkFn(currentAnalysis, apps, history)).map(j => j.id), [currentAnalysis, apps, history]);
+  const stepsCompleted = completedIds.length;
   const pct = Math.round((stepsCompleted / JOURNEY.length) * 100);
+
+  const [prevCompletedIds, setPrevCompletedIds] = useState(completedIds);
+
+  useEffect(() => {
+    const newCompletions = completedIds.filter(id => !prevCompletedIds.includes(id));
+    if (newCompletions.length > 0) {
+      const step = JOURNEY.find(j => j.id === newCompletions[0]);
+      if (step) {
+        setJustCompleted(step.label);
+        setTimeout(() => setJustCompleted(null), 5000);
+      }
+      setPrevCompletedIds(completedIds);
+    }
+  }, [completedIds, prevCompletedIds]);
 
   // Calculate real streak based on consecutive days of activity (from apps or runs)
   const calculateStreak = () => {
@@ -130,7 +174,22 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
               <p className={`font-black text-lg ${score>=80?'text-green-400':score>=60?'text-amber-400':'text-blue-400'}`}>
                 {score>=80?'FAANG-Ready':score>=60?'Competitive':'Needs Work'}
               </p>
-              <button onClick={() => onNavigate('full-review')} className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors mt-1">View Analysis →</button>
+              <p className="text-slate-500 text-xs leading-relaxed mt-2 max-w-[160px]">
+                {score >= 80 
+                  ? "You can apply with confidence. Rebuild can push this to 94+."
+                  : score >= 60 
+                  ? "ATS may pass you, but recruiters won't notice you. Rebuild fixes this."
+                  : "Your resume is likely auto-rejected. This score means callbacks are rare."}
+              </p>
+              {score < 80 && (
+                <button
+                  onClick={() => onNavigate('rebuild-standalone')}
+                  className="mt-3 block text-blue-400 font-black text-[10px] uppercase tracking-widest hover:text-white transition-colors"
+                >
+                  Fix This Now →
+                </button>
+              )}
+              <button onClick={() => onNavigate('full-review')} className="text-xs font-semibold text-slate-500 hover:text-blue-400 transition-colors mt-3">View Analysis →</button>
             </div>
           </div>
         )}
@@ -153,6 +212,19 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
         <div className="h-2 bg-white/5 rounded-full mb-6 overflow-hidden">
           <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-1000" style={{ width: `${pct}%` }}/>
         </div>
+        
+        {stepsCompleted === JOURNEY.length && (
+          <div className="mb-6 p-5 bg-gradient-to-r from-green-600/10 to-emerald-600/10 border border-green-500/20 rounded-2xl flex items-center justify-between">
+            <div>
+              <p className="text-green-400 font-black text-xs uppercase tracking-widest">Complete Career Launch</p>
+              <p className="text-white font-bold text-sm mt-1">You've completed every step. You're ready.</p>
+            </div>
+            <button className="bg-green-600 hover:bg-green-500 text-white font-black text-xs px-4 py-2.5 rounded-xl uppercase tracking-widest transition-colors">
+              Share →
+            </button>
+          </div>
+        )}
+        
         {/* Steps */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {JOURNEY.map(j => {
@@ -290,7 +362,7 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
         {TOOLS.map(tool => {
           const Icon = tool.icon;
           return (
-            <button key={tool.label} onClick={() => onNavigate(tool.view)}
+            <button key={tool.label} onClick={() => tool.locked ? handleLockedTool(tool.view) : onNavigate(tool.view)}
               className={`group bg-gradient-to-br ${tool.color} border ${tool.border} rounded-[1.75rem] p-6 text-left transition-all hover:shadow-xl hover:-translate-y-1 relative overflow-hidden`}>
               <div className={`w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                 <Icon size={18} className={tool.iconColor}/>
@@ -306,11 +378,100 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
 
       {/* Upload CTA if no resume */}
       {!currentAnalysis && (
-        <div className="mt-8 bg-gradient-to-r from-blue-600/10 to-indigo-600/10 border border-blue-500/20 rounded-[2rem] p-10 text-center">
-          <div className="w-16 h-16 rounded-3xl bg-blue-500/20 flex items-center justify-center mx-auto mb-4"><Sparkles size={28} className="text-blue-400"/></div>
-          <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tight">Start Your Career Launch</h3>
-          <p className="text-slate-400 mb-6 max-w-md mx-auto">Upload your resume to unlock a full AI diagnostic, score, and personalized career intelligence across all 6 modules.</p>
-          <button onClick={() => onNavigate('ai-review')} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black px-10 py-4 rounded-2xl uppercase tracking-widest text-sm shadow-xl shadow-blue-500/20 hover:opacity-90 transition-all">Upload Resume & Get Score →</button>
+        <div className="mt-8 bg-[#0D0D12] border border-white/10 rounded-[2rem] overflow-hidden">
+          {/* Urgency header */}
+          <div className="bg-gradient-to-r from-red-900/20 to-amber-900/10 border-b border-white/5 px-8 py-4 flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <p className="text-red-400 font-black text-xs uppercase tracking-widest">
+              Action Required: Your Resume Status is Unknown
+            </p>
+          </div>
+          
+          <div className="p-10 grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+            {/* What they don't know */}
+            <div className="space-y-4">
+              <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Right now, you don't know:</p>
+              {[
+                'If your resume survives ATS auto-rejection',
+                'Which 3 lines are costing you callbacks',
+                'If your seniority signals match your target level',
+                'Why LinkedIn recruiters can\'t find you'
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0" />
+                  <p className="text-slate-500 text-sm">{item}</p>
+                </div>
+              ))}
+            </div>
+            
+            {/* The action */}
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-3xl bg-blue-500/20 flex items-center justify-center mx-auto mb-4">
+                <Sparkles size={32} className="text-blue-400" />
+              </div>
+              <p className="text-slate-500 text-sm mb-2">Upload your resume to find out</p>
+              <p className="text-blue-400 font-black text-3xl mb-4">FREE</p>
+              <button
+                onClick={() => onNavigate('ai-review')}
+                className="bg-white text-black font-black px-8 py-4 rounded-2xl w-full hover:bg-blue-50 transition-all uppercase tracking-widest text-xs"
+              >
+                Get My Free Diagnosis →
+              </button>
+              <p className="text-slate-600 text-[10px] mt-3">Under 2 minutes · No credit card</p>
+            </div>
+            
+            {/* What they'll learn */}
+            <div className="space-y-4">
+              <p className="text-slate-400 text-xs font-black uppercase tracking-widest">After your diagnosis:</p>
+              {[
+                'ATS Survivability Score (0-100)',
+                'Exact lines causing auto-rejection',
+                'Seniority signal vs. target level',
+                '8-point failure map with fixes'
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 shrink-0" />
+                  <p className="text-slate-400 text-sm">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom sheet UI */}
+      {upsellContext && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in" onClick={() => setUpsellContext(null)}>
+          <div className="bg-[#111118] border border-white/10 rounded-t-[2.5rem] p-8 max-w-lg w-full animate-in slide-in-from-bottom-10"
+               onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-6" />
+            <h3 className="text-white font-black text-xl uppercase tracking-tight mb-2">
+              {upsellContext.tool}
+            </h3>
+            <p className="text-slate-400 text-sm leading-relaxed mb-4">{upsellContext.benefit}</p>
+            <div className="flex items-center gap-2 mb-6">
+              <Clock size={14} className="text-blue-400" />
+              <p className="text-blue-400 text-sm font-bold">{upsellContext.time}</p>
+            </div>
+            <button
+              onClick={() => { setUpsellContext(null); onNavigate('pricing'); }}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs"
+            >
+              Unlock for $24/mo — Start Today →
+            </button>
+            <p className="text-slate-600 text-[10px] text-center mt-3">7-day guarantee · Cancel anytime</p>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {justCompleted && (
+        <div className="fixed bottom-8 right-8 z-50 bg-green-500/10 border border-green-500/30 rounded-2xl p-4 flex items-center gap-3 animate-in slide-in-from-right fade-in shadow-2xl">
+          <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center"><Check size={14} className="text-green-400"/></div>
+          <div>
+            <p className="text-green-400 font-black text-xs uppercase tracking-widest">Completed</p>
+            <p className="text-white text-sm font-bold">{justCompleted}</p>
+          </div>
         </div>
       )}
     </div>

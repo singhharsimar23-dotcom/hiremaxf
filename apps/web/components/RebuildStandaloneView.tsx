@@ -26,7 +26,7 @@ import {
   AlertCircle,
   Lock
 } from 'lucide-react';
-import { UserPlan, StructuredResume, ResumeGroup, RoleTrack, BackgroundJob, JobType } from '../types';
+import { UserPlan, StructuredResume, ResumeGroup, RoleTrack, BackgroundJob, JobType, SignalDelta, JDParsed } from '../types';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -40,11 +40,19 @@ interface RebuildStandaloneViewProps {
   onUpgrade: () => void;
   history: ResumeGroup[];
   preFilledContext?: { text: string; role: string; track: RoleTrack; gate?: 'SAFE' | 'BORDERLINE' | 'LOCKED' } | null;
+  activeAnalysis?: { targetRole: string; chokepoint: string; chokepointScore: number; atsScore: number } | null;
   activeJobs: Record<string, BackgroundJob>;
   dispatchJob: (type: JobType, payload: any) => Promise<string>;
 }
 
-const StructuredResumePreview: React.FC<{ resume: StructuredResume }> = ({ resume }) => (
+const StructuredResumePreview: React.FC<{ resume: StructuredResume, showDiff?: boolean, changeLog?: ChangeEntry[] }> = ({ resume, showDiff, changeLog }) => {
+  const isChanged = (text: string) => {
+    if (!showDiff || !changeLog) return false;
+    const cleanText = text.toLowerCase();
+    return changeLog.some(c => cleanText.includes(c.preview.replace('...', '').trim().toLowerCase()));
+  };
+
+  return (
   <div className="bg-white text-slate-900 p-12 shadow-inner min-h-full font-serif" id="rebuild-preview-target">
     <header className="mb-8 border-b-2 border-slate-900 pb-6">
       <h1 className="text-3xl font-extrabold uppercase tracking-tight text-slate-950 mb-3">{resume.contact.full_name}</h1>
@@ -62,7 +70,9 @@ const StructuredResumePreview: React.FC<{ resume: StructuredResume }> = ({ resum
       {resume.summary && (
         <section>
           <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-3 text-slate-950 tracking-widest">Professional Summary</h2>
-          <p className="text-[13px] leading-relaxed text-slate-800">{resume.summary}</p>
+          <p className={`text-[13px] leading-relaxed transition-colors duration-500 ${isChanged(resume.summary) ? 'bg-blue-50 border-l-2 border-blue-500 pl-2 text-blue-900' : 'text-slate-800'}`}>
+            {resume.summary}
+          </p>
         </section>
       )}
 
@@ -79,7 +89,9 @@ const StructuredResumePreview: React.FC<{ resume: StructuredResume }> = ({ resum
                 <p className="text-[12px] font-bold text-slate-700 italic mb-2">{exp.organization}</p>
                 <ul className="list-disc list-outside ml-4 space-y-1">
                   {exp.bullets.map((bullet, bIdx) => (
-                    <li key={bIdx} className="text-[12px] text-slate-800 leading-snug">{bullet}</li>
+                    <li key={bIdx} className={`text-[12px] leading-snug transition-colors duration-500 ${isChanged(bullet) ? 'bg-green-50 border-l-2 border-green-500 pl-2 text-green-900 list-none -ml-4' : 'text-slate-800'}`}>
+                      {bullet}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -118,7 +130,8 @@ const StructuredResumePreview: React.FC<{ resume: StructuredResume }> = ({ resum
       )}
     </div>
   </div>
-);
+  );
+}
 
 // ── Change Log Engine ──────────────────────────────────────────────────────
 interface ChangeEntry { type: string; section: string; company?: string; preview: string; detail: string; }
@@ -178,18 +191,37 @@ const NEXT_STEPS: Record<string, string[]> = {
   FINTECH_INFRA:     ['Quantify latency/uptime SLA improvements','Highlight mission-critical system scope','Add compliance frameworks handled (SOC2, PCI-DSS)'],
 };
 
-export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ plan, credits, setCredits, onRebuildSuccess, onUpgrade, history, preFilledContext, activeJobs, dispatchJob }) => {
+export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ plan, credits, setCredits, onRebuildSuccess, onUpgrade, history, preFilledContext, activeAnalysis, activeJobs, dispatchJob }) => {
   const [step, setStep] = useState<'form' | 'processing' | 'result' | 'quota_error'>('form');
   const [loading, setLoading] = useState(false);
   const [resumeText, setResumeText] = useState('');
+  const [originalText, setOriginalText] = useState(''); // stored at dispatch time for diff view
   const [selectedResumeId, setSelectedResumeId] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
   const [roleTrack, setRoleTrack] = useState<RoleTrack>('BIG_TECH');
   const [rebuiltResume, setRebuiltResume] = useState<StructuredResume | null>(null);
+  const [signalDelta, setSignalDelta] = useState<SignalDelta | null>(null);
   const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
   const [finalMeta, setFinalMeta] = useState({ role: '', label: '' });
   const [gateState, setGateState] = useState<'SAFE' | 'BORDERLINE' | 'LOCKED' | undefined>(undefined);
   const [createdIds, setCreatedIds] = useState<{ groupId: string; versionId: string } | null>(null);
+  const [targetJD, setTargetJD] = useState('');
+  const [jdCollapsed, setJdCollapsed] = useState(false);
+  const [jdParsed, setJdParsed] = useState<JDParsed | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
+  const [processingStageIdx, setProcessingStageIdx] = useState(0);
+  const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [changeLog, setChangeLog] = useState<ChangeEntry[]>([]);
+
+  const REBUILD_STAGES = [
+    { label: 'Parsing source document', cumulative: 8000 },
+    { label: 'Identifying signal gaps', cumulative: 23000 },
+    { label: 'Calibrating to track heuristics', cumulative: 43000 },
+    { label: 'Injecting ownership language', cumulative: 68000 },
+    { label: 'Verifying ATS compatibility', cumulative: 78000 },
+    { label: 'Computing signal delta', cumulative: 83000 },
+  ];
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -210,6 +242,17 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
       }
     }
   }, []);
+
+  // Processing stage ticker
+  useEffect(() => {
+    if (step !== 'processing' || !processingStartedAt) return;
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - processingStartedAt;
+      const nextIdx = REBUILD_STAGES.findIndex(s => elapsed < s.cumulative);
+      setProcessingStageIdx(nextIdx === -1 ? REBUILD_STAGES.length - 1 : nextIdx);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [step, processingStartedAt]);
 
   useEffect(() => {
     if (!trackingJobId) return;
@@ -234,6 +277,10 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
           };
 
           setRebuiltResume(finalResume as StructuredResume);
+          // Extract signalDelta if pipeline returned it
+          if (result.signalDelta) setSignalDelta(result.signalDelta);
+          // Compute client-side changelog as fallback
+          setChangeLog(computeChangeLog(originalText || resumeText, finalResume as StructuredResume));
           setCreatedIds(result.id ? { groupId: result.resume_id, versionId: result.id } : null);
           setFinalMeta({
             role: job.payload?.role || formData.role || "Professional",
@@ -243,18 +290,19 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
           setTrackingJobId(null);
         } else {
           console.error("Malformed rebuild result:", result);
-          setErrorFeedback("The AI returned an invalid resume format. Please try again.");
+          // Preserve form data, don't clear resumeText
+          setErrorFeedback("Connection issue. Your resume data is saved — click Execute to try again.");
           setStep('form');
           setTrackingJobId(null);
         }
       } else if (job.status === 'FAILED') {
-        setErrorFeedback(job.error || "Resume reconstruction failed.");
+        // Preserve form data on failure
+        setErrorFeedback(job.error || "Resume reconstruction failed. Your data is saved — click Execute to try again.");
         setStep('form');
         setTrackingJobId(null);
       }
     }
   }, [activeJobs, trackingJobId]);
-
   useEffect(() => {
     if (preFilledContext) {
       setResumeText(preFilledContext.text);
@@ -266,6 +314,13 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
       }
     }
   }, [preFilledContext]);
+
+  // Shared intelligence: auto-fill from analysis chokepoint
+  useEffect(() => {
+    if (activeAnalysis && !preFilledContext) {
+      setFormData(prev => ({ ...prev, role: activeAnalysis.targetRole }));
+    }
+  }, [activeAnalysis]);
 
   const isPro = plan !== 'Starter';
   const recentResumes = history.slice(0, 5);
@@ -319,38 +374,45 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
 
     if (!textToUse || !roleToUse) return;
     setErrorFeedback(null);
+    setRetryCount(0);
+    setProcessingStageIdx(0);
+    setOriginalText(textToUse); // capture for diff view
     setStep('processing');
+    setProcessingStartedAt(Date.now());
 
-    const prompt = `Architect a market-aligned resume for the "${trackToUse}" judgment track.
-    TARGET ROLE: ${roleToUse}
-    SOURCE CONTENT: ${textToUse}
-    ELIGIBILITY GATE: ${gateToUse}
-    
-    RULES:
-    1. Deterministic rebuild. 
-    2. No hallucination. 
-    3. Improve signal density for ${trackToUse} heuristics.
-    4. MANDATORY CONSTRAINT - ELIGIBILITY GATE BOUNDARY:
-       - The output MUST NOT exceed the seniority, scope, or authority permitted by the "${gateToUse}" Eligibility Gate.
-       - If gate is "LOCKED": Operate in "signal repair mode". Do NOT make the resume appear application-ready. Do NOT inject senior architectural ownership, leadership authority, expert-level claims, or FAANG-ready framing.
-       - If gate is "BORDERLINE": Improve clarity and signal strength, but remain conservative in scope. Do NOT over-project seniority.
-       - If gate is "SAFE": Full rebuild behavior and seniority optimization allowed.
-
-    Return JSON in the exact following structure:
-    {
-      "newResume": {
-        "contact": { "full_name": string, "email": string, "phone": string, "location": string, "links": string[] },
-        "summary": string,
-        "education": [{ "institution": string, "degree": string, "dates": string, "details": string }],
-        "experience": [{ "title": string, "organization": string, "dates": string, "bullets": string[] }],
-        "projects": [{ "name": string, "description": string, "impact": string }],
-        "skills": { "languages": string[], "frameworks": string[], "tools": string[], "specializations": string[] },
-        "leadership": [{ "role": string, "description": string }]
+    const attemptDispatch = async (attempt: number): Promise<string> => {
+      try {
+        setLoading(true);
+        setErrorFeedback(null);
+        
+        const payload: any = {
+          resumeText: textToUse,
+          role: roleToUse,
+          track: trackToUse
+        };
+        
+        if (targetJD) payload.targetJD = targetJD;
+        
+        const jobId = await dispatchJob('REBUILD', payload);
+        return jobId;
+      } catch (err) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+          setRetryCount(attempt + 1);
+          return attemptDispatch(attempt + 1);
+        }
+        throw err;
       }
-    }`;
+    };
 
-    const jobId = await dispatchJob('REBUILD', { role: roleToUse, roleTrack: trackToUse, sourceText: textToUse });
-    setTrackingJobId(jobId);
+    try {
+      const jobId = await attemptDispatch(0);
+      setTrackingJobId(jobId);
+    } catch (err) {
+      // Final failure — return to form with data preserved
+      setErrorFeedback('Connection issue. Your resume data is saved — click Execute to try again.');
+      setStep('form');
+    }
   };
 
   const handleCommit = () => {
@@ -427,23 +489,64 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
   }
 
   if (step === 'processing') {
+    const currentStage = REBUILD_STAGES[processingStageIdx];
+    const progressPct = currentStage ? ((processingStageIdx + 1) / REBUILD_STAGES.length) * 100 : 95;
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] gap-10">
-        <Loader2 size={80} className="text-blue-500 animate-spin" strokeWidth={1.5} />
-        <h3 className="text-3xl font-black text-white uppercase tracking-tight">Re-Architecting Profile</h3>
-        <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Execution continues in background...</p>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] gap-10 px-10">
+        <div className="w-full max-w-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-2xl font-black text-white uppercase tracking-tight">Re-Architecting Profile</h3>
+            {retryCount > 0 && (
+              <span className="text-amber-400 text-[9px] font-black uppercase tracking-widest border border-amber-500/20 px-3 py-1 rounded-full">
+                Retry {retryCount}/2
+              </span>
+            )}
+          </div>
+
+          {/* Stage progress bar */}
+          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mb-8">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-1000"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+
+          {/* Stage list */}
+          <div className="space-y-4">
+            {REBUILD_STAGES.map((stage, i) => {
+              const isDone = i < processingStageIdx;
+              const isActive = i === processingStageIdx;
+              return (
+                <div key={i} className={`flex items-center gap-4 transition-all duration-500 ${
+                  isDone ? 'opacity-40' : isActive ? 'opacity-100' : 'opacity-20'
+                }`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                    isDone ? 'bg-green-500/20 text-green-400' :
+                    isActive ? 'bg-blue-500/20 text-blue-400' :
+                    'bg-white/5 text-slate-700'
+                  }`}>
+                    {isDone ? <CheckCircle2 size={12} /> : isActive ? <Loader2 size={12} className="animate-spin" /> : <div className="w-1.5 h-1.5 rounded-full bg-current" />}
+                  </div>
+                  <p className={`text-sm font-bold uppercase tracking-widest ${
+                    isActive ? 'text-white' : 'text-slate-600'
+                  }`}>{stage.label}</p>
+                  {isDone && <CheckCircle2 size={12} className="text-green-400 ml-auto" />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em]">Execution continues in background · Do not close this tab</p>
       </div>
     );
   }
 
   if (step === 'result' && rebuiltResume) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const [changeLog] = useState<ChangeEntry[]>(() => computeChangeLog(resumeText, rebuiltResume));
-
+    // changeLog is now a real state var (was previously a useState inside this conditional — hooks violation)
     const rebuiltText = JSON.stringify(rebuiltResume);
-    const beforeOwnership = countOwnershipVerbs(resumeText);
+    const beforeOwnership = countOwnershipVerbs(originalText || resumeText);
     const afterOwnership  = countOwnershipVerbs(rebuiltText);
-    const beforeMetrics   = countMetrics(resumeText);
+    const beforeMetrics   = countMetrics(originalText || resumeText);
     const afterMetrics    = countMetrics(rebuiltText);
 
     const allBullets = rebuiltResume.experience?.flatMap(e => e.bullets ?? []) ?? [];
@@ -455,16 +558,33 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
 
     return (
       <div className="max-w-[1400px] mx-auto py-12 px-10 animate-in fade-in duration-700">
-        {/* ── Header (unchanged) ── */}
+        {/* ── Header ── */}
         <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
           <div>
             <div className="flex items-center gap-3 text-green-400 mb-4 bg-green-400/5 w-fit px-4 py-1 rounded-full border border-green-400/10">
               <CheckCircle2 size={14} />
-              <span className="text-[10px] font-black uppercase tracking-widest">Rebuild Result Generated</span>
+              <span className="text-[10px] font-black uppercase tracking-widest">Rebuild Complete</span>
             </div>
             <h2 className="text-5xl font-black text-white tracking-tighter uppercase leading-none">Architect Preview</h2>
+            {/* Signal Uplift pill */}
+            {signalDelta && (
+              <div className="flex items-center gap-2 mt-3">
+                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Signal Uplift:</span>
+                <span className="text-green-400 font-black text-sm">+{signalDelta.scoreAfter - signalDelta.scoreBefore} pts</span>
+                <span className="text-slate-600 text-[9px]">{signalDelta.scoreBefore} → {signalDelta.scoreAfter}</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
+            {/* Diff view toggle */}
+            <button
+              onClick={() => setShowDiff(d => !d)}
+              className={`px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
+                showDiff ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' : 'border-white/5 text-slate-500 hover:text-white'
+              }`}
+            >
+              <Eye size={13} /> {showDiff ? 'Hide Diff' : 'Show Diff'}
+            </button>
             <button
               onClick={handleDownload}
               className="bg-slate-950/40 border border-white/5 text-white font-black py-4 px-8 rounded-2xl shadow-xl hover:bg-slate-900/50 hover:border-white/10 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 flex items-center justify-center gap-2 uppercase tracking-widest text-[10px]"
@@ -486,7 +606,7 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
           {/* COLUMN 1 — Resume Preview (col-span-5) */}
           <div className="lg:col-span-5 bg-[#161824]/60 border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl h-[800px]">
             <div className="h-full overflow-y-auto custom-scrollbar">
-              <StructuredResumePreview resume={rebuiltResume} />
+              <StructuredResumePreview resume={rebuiltResume} showDiff={showDiff} changeLog={changeLog} />
             </div>
           </div>
 
@@ -615,6 +735,20 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
         </p>
       </div>
 
+      {/* Chokepoint Context Banner — shared intelligence from FullReview */}
+      {activeAnalysis && (
+        <div className="mb-8 p-5 bg-blue-500/5 border border-blue-500/20 rounded-2xl flex items-start gap-4">
+          <AlertCircle size={18} className="text-blue-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-blue-400 font-black text-[10px] uppercase tracking-widest mb-1">Rebuild Target from Analysis</p>
+            <p className="text-white font-bold text-sm">{activeAnalysis.targetRole}</p>
+            <p className="text-slate-500 text-[11px] mt-1">
+              Critical chokepoint: <span className="text-red-400 font-black">{activeAnalysis.chokepoint}</span> ({activeAnalysis.chokepointScore}%) — rebuilt resume will prioritize this signal.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
         <div className="lg:col-span-8 space-y-10">
 
@@ -684,6 +818,24 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
               )}
 
               <div className="backdrop-blur-lg bg-[#161824]/60 border border-white/5 rounded-[2.5rem] p-10 space-y-12 shadow-2xl shadow-black/40">
+
+                {/* Target JD Panel */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 px-1">
+                    <FileIcon size={16} className="text-blue-550" />
+                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                      Target Job Posting (Optional)
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <textarea
+                      value={targetJD}
+                      onChange={e => setTargetJD(e.target.value)}
+                      placeholder="Paste the full job description you are applying to (highly recommended for precision ATS targeting)"
+                      className="w-full bg-slate-950/40 border border-white/5 rounded-2xl p-6 text-white outline-none focus:border-blue-500/80 focus:shadow-[0_0_25px_rgba(59,130,246,0.18)] text-sm transition-all duration-300 placeholder:opacity-30 min-h-[140px] custom-scrollbar"
+                    />
+                  </div>
+                </div>
 
                 {/* Track Selection (Same as Intelligence Page) */}
                 <div className="space-y-6">

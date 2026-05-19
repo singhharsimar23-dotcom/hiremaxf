@@ -1,32 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import {
-   ShieldCheck,
-   ArrowRight,
-   Loader2,
-   TrendingUp,
-   Zap,
-   AlertCircle,
-   Cpu,
-   Stamp,
-   Shield,
-   Lock,
-   AlertTriangle,
-   RefreshCw,
-   Radar,
-   AlertOctagon,
-   Clock,
-   Radio,
-   Send,
-   Target,
-   ShieldAlert,
-   Fingerprint,
-   History,
-   Activity,
-   XCircle,
-   CheckCircle2
+   ArrowRight, Loader2, TrendingUp, AlertCircle, Shield, Lock,
+   AlertTriangle, RefreshCw, Radar, AlertOctagon, Clock, Radio,
+   Send, Target, ShieldAlert, Fingerprint, Activity, XCircle,
+   CheckCircle2, Info, ExternalLink, Plus, ChevronDown, ChevronUp,
+   BookmarkPlus, Play
 } from 'lucide-react';
 import { DiagnosticResult, UserPlan, MarketCommandSnapshot, AppView, BackgroundJob, JobType } from '../types';
 
@@ -48,12 +29,55 @@ interface CachedSnapshot {
    expiresAt: number;
 }
 
+interface SnapshotArchive {
+   id: string;
+   role: string;
+   geography: string;
+   generatedAt: string;
+   marketStatus: string;
+   executionTargetCount: number;
+}
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 const CACHE_KEY = 'hiremax_market_snapshot';
+const ARCHIVE_KEY = 'hiremax_snapshot_archive';
 const CACHE_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
 const PROCESSING_TIMEOUT_MS = 120000; // 2 minutes
+
+const MARKET_CONTEXT_2026 = `CRITICAL MARKET CONTEXT (Source: Q1 2026 data):
+- Tech layoffs in 2026: 138,837 workers as of May 2026 (1,006/day)
+- Application volume: 250+ applications per role at well-known companies
+- Tech job postings: 36% below pre-2020 levels
+- Fastest growing: AI/ML Engineering (+400%), Cybersecurity, Data Science
+- Shrinking: Legacy SWE generalist, QA Engineering, Project Management
+- Median job search duration: 45-90 days for mid-level, 17 days via specialists
+- Senior engineers with AI skills command 40-60% premium
+- Key insight: Companies are cutting legacy roles AND hiring AI-adjacent roles simultaneously
+- Target signals: Series C-D startups with recent funding, companies announcing AI infra investment`.trim();
+
+const HOT_SEGMENTS_2026: Record<string, string[]> = {
+   'ML Engineer': ['AI infrastructure', 'LLM fine-tuning', 'RAG systems'],
+   'Machine Learning Engineer': ['AI infrastructure', 'LLM fine-tuning', 'RAG systems'],
+   'AI Engineer': ['Agent systems', 'LLM ops', 'Multimodal AI'],
+   'Software Engineer': ['AI-adjacent products', 'Fintech', 'Security tooling'],
+   'Backend Engineer': ['AI infrastructure', 'Fintech APIs', 'Developer platforms'],
+   'Data Engineer': ['Real-time pipelines', 'AI data infra', 'Analytics engineering'],
+   'Data Scientist': ['LLM evaluation', 'MLOps', 'Applied AI'],
+   'Product Manager': ['AI product', 'Developer tools', 'B2B SaaS'],
+   'DevOps Engineer': ['Platform engineering', 'AI infra', 'Security automation'],
+   'Security Engineer': ['AppSec', 'Cloud security', 'AI security'],
+};
+
+const MARKET_PULSE_2026 = {
+   techLayoffs: '138,837',
+   applicantsPerRole: '250+',
+   openingsQ1: '67,000',
+   aiGrowth: '+400%',
+   medianSearch: '45–90 days',
+   lastUpdated: 'Q1 2026',
+};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -81,21 +105,40 @@ const safeLocalStorageSet = (key: string, value: unknown): boolean => {
 const safeLocalStorageRemove = (key: string): void => {
    try {
       localStorage.removeItem(key);
-   } catch {
-      // Silently fail
-   }
+   } catch { /* Silently fail */ }
 };
 
 const formatExpiry = (expiresAt: number): string => {
    const now = Date.now();
    if (expiresAt <= now) return 'Expired';
-
    const diff = expiresAt - now;
    const hours = Math.floor(diff / (60 * 60 * 1000));
    const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
-
    if (hours > 0) return `${hours}h ${minutes}m`;
    return `${minutes}m`;
+};
+
+const getFitLabel = (confidence: number) => {
+   if (confidence >= 90) return { label: 'Strong Fit', color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/20' };
+   if (confidence >= 70) return { label: 'Good Fit', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' };
+   return { label: 'Possible Fit', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' };
+};
+
+const getLinkedInJobsUrl = (roleTitle: string, company: string) =>
+   `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(roleTitle)}&company=${encodeURIComponent(company)}`;
+
+const getGlassdoorUrl = (company: string) =>
+   `https://www.glassdoor.com/Search/Results.htm?keyword=${encodeURIComponent(company)}`;
+
+const getHotSegments = (role: string): string[] => {
+   const r = role.toLowerCase();
+   for (const [key, segs] of Object.entries(HOT_SEGMENTS_2026)) {
+      if (r.includes(key.toLowerCase())) return segs;
+   }
+   if (r.includes('engineer') || r.includes('developer')) return HOT_SEGMENTS_2026['Software Engineer'];
+   if (r.includes('product')) return HOT_SEGMENTS_2026['Product Manager'];
+   if (r.includes('data')) return HOT_SEGMENTS_2026['Data Scientist'];
+   return ['AI-adjacent products', 'Series C-D startups', 'Growth-stage companies'];
 };
 
 // ============================================================================
@@ -103,6 +146,7 @@ const formatExpiry = (expiresAt: number): string => {
 // ============================================================================
 export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
    analysisResult,
+   resumeText,
    plan,
    setView,
    activeJobs,
@@ -119,6 +163,13 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
    const [targetRole, setTargetRole] = useState(analysisResult?.role || '');
    const [geography, setGeography] = useState('Remote / North America');
    const [expBand, setExpBand] = useState('Senior (5-8 years)');
+
+   // New state — Fix 1, 4, 5
+   const [expandedTargetIdx, setExpandedTargetIdx] = useState<number | null>(null);
+   const [snapshotArchive, setSnapshotArchive] = useState<SnapshotArchive[]>([]);
+   const [showArchive, setShowArchive] = useState(false);
+   const [previousSnapshot, setPreviousSnapshot] = useState<MarketCommandSnapshot | null>(null);
+   const [useResumeContext, setUseResumeContext] = useState(false);
 
    // Refs for cleanup
    const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -137,6 +188,18 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
          return () => clearTimeout(timer);
       }
    }, [successMessage]);
+
+   // Load snapshot archive on mount
+   useEffect(() => {
+      const loadArchive = async () => {
+         const { data: { session } } = await supabase.auth.getSession();
+         const userId = session?.user?.id || 'anonymous';
+         const archiveKey = `${ARCHIVE_KEY}_${userId}`;
+         const saved = safeLocalStorageGet<SnapshotArchive[]>(archiveKey, []);
+         setSnapshotArchive(saved);
+      };
+      loadArchive();
+   }, []);
 
    // Initialize from cache or running jobs (SEC-004 / REL-005)
    useEffect(() => {
@@ -274,22 +337,52 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
       };
    }, [viewState, processingStartTime]);
 
-   const handleGenerate = useCallback(async () => {
+   // Fix 4: Input validation before generation
+   const validateInputs = (): boolean => {
       if (!targetRole.trim()) {
          setErrorFeedback('Please enter a target role designation.');
-         return;
+         return false;
       }
       if (!geography.trim()) {
          setErrorFeedback('Please enter a geography perimeter.');
-         return;
+         return false;
       }
+      const rw = targetRole.toLowerCase();
+      const ew = expBand.toLowerCase();
+      if ((rw.includes('principal') || rw.includes('staff+') || rw.includes('director')) &&
+          (ew.includes('entry') || ew.includes('0-2'))) {
+         setErrorFeedback(
+            'Role mismatch: Principal/Director roles typically require 10+ years. ' +
+            'Try "Senior Engineer" for your experience band, or adjust your experience band.'
+         );
+         return false;
+      }
+      return true;
+   };
 
+   // Fix 2 & 3: handleGenerate with market context + validation
+   const handleGenerate = useCallback(async () => {
+      if (!validateInputs()) return;
       setErrorFeedback(null);
       setViewState('processing');
       setProcessingStartTime(Date.now());
-
       try {
-         const jobId = await dispatchJob('OUTLOOK', { role: targetRole, geography, expBand });
+         const payload: Record<string, unknown> = {
+            role: targetRole,
+            geography,
+            expBand,
+            marketContext: MARKET_CONTEXT_2026,
+            actionOrderRequirements: true,
+         };
+         if (useResumeContext && analysisResult) {
+            payload.resumeProfile = {
+               role: analysisResult.role,
+               overallScore: analysisResult.overallScore,
+               chokepoint: analysisResult.eightPoints?.[0]?.name,
+               resumeText: resumeText || analysisResult.resumeText,
+            };
+         }
+         const jobId = await dispatchJob('OUTLOOK', payload);
          setTrackingJobId(jobId);
       } catch (e: unknown) {
          const message = e instanceof Error ? e.message : 'Unknown error';
@@ -297,16 +390,55 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
          setViewState('input');
          setProcessingStartTime(null);
       }
-   }, [targetRole, geography, expBand, dispatchJob]);
+   }, [targetRole, geography, expBand, dispatchJob, useResumeContext, analysisResult, resumeText]);
 
-   const handleReset = useCallback(() => {
+   // Fix 5a: Save current snapshot to named archive
+   const handleSaveSnapshot = useCallback(async () => {
+      if (!snapshot) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || 'anonymous';
+      const archiveKey = `${ARCHIVE_KEY}_${userId}`;
+      const entry: SnapshotArchive = {
+         id: snapshot.id,
+         role: snapshot.context.role,
+         geography: snapshot.context.geography,
+         generatedAt: snapshot.timestamp,
+         marketStatus: snapshot.marketStatus.label,
+         executionTargetCount: snapshot.executionTargets.length,
+      };
+      const existing = safeLocalStorageGet<SnapshotArchive[]>(archiveKey, []);
+      const updated = [entry, ...existing.filter(e => e.id !== entry.id)].slice(0, 3);
+      safeLocalStorageSet(archiveKey, updated);
+      setSnapshotArchive(updated);
+      setSuccessMessage('Snapshot saved to archive.');
+   }, [snapshot]);
+
+   // Fix 5b: Save + go to input for new command
+   const handleRunNewCommand = useCallback(async () => {
+      if (snapshot) {
+         const { data: { session } } = await supabase.auth.getSession();
+         const userId = session?.user?.id || 'anonymous';
+         const archiveKey = `${ARCHIVE_KEY}_${userId}`;
+         const entry: SnapshotArchive = {
+            id: snapshot.id, role: snapshot.context.role,
+            geography: snapshot.context.geography,
+            generatedAt: snapshot.timestamp,
+            marketStatus: snapshot.marketStatus.label,
+            executionTargetCount: snapshot.executionTargets.length,
+         };
+         const existing = safeLocalStorageGet<SnapshotArchive[]>(archiveKey, []);
+         const updated = [entry, ...existing.filter(e => e.id !== entry.id)].slice(0, 3);
+         safeLocalStorageSet(archiveKey, updated);
+         setSnapshotArchive(updated);
+         setPreviousSnapshot(snapshot);
+      }
       const userKey = (window as any).__current_intel_key || `${CACHE_KEY}_anonymous`;
       safeLocalStorageRemove(userKey);
-      setSnapshot(null);
-      setSnapshotExpiry(null);
-      setViewState('input');
-      setSuccessMessage(null);
-   }, []);
+      setSnapshot(null); setSnapshotExpiry(null);
+      setViewState('input'); setSuccessMessage(null);
+   }, [snapshot]);
+
+   const handleReset = handleRunNewCommand;
 
    // ========================================================================
    // RENDER: PAYWALL
@@ -397,7 +529,92 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
                </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
+            {/* MARKET PULSE BAR — Q1 2026 verified static data */}
+            <div className="mb-10 flex flex-wrap gap-3 items-center p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
+               <div className="flex items-center gap-1.5 mr-2">
+                  <Radar size={12} className="text-blue-500" />
+                  <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest">Market Pulse · {MARKET_PULSE_2026.lastUpdated}</span>
+               </div>
+               {[
+                  { label: 'Tech Layoffs YTD', value: MARKET_PULSE_2026.techLayoffs, color: 'text-red-400' },
+                  { label: 'Applicants / Role', value: MARKET_PULSE_2026.applicantsPerRole, color: 'text-amber-400' },
+                  { label: 'Open Positions Q1', value: MARKET_PULSE_2026.openingsQ1, color: 'text-blue-400' },
+                  { label: 'AI Role Growth', value: MARKET_PULSE_2026.aiGrowth, color: 'text-green-400' },
+                  { label: 'Median Search', value: MARKET_PULSE_2026.medianSearch, color: 'text-slate-400' },
+               ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/5 rounded-lg">
+                     <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{item.label}</span>
+                     <span className={`text-[10px] font-black ${item.color}`}>{item.value}</span>
+                  </div>
+               ))}
+               <div className="ml-auto flex items-center gap-1">
+                  <Info size={10} className="text-slate-700" />
+                  <span className="text-[8px] text-slate-700 uppercase tracking-widest">Static · Not real-time</span>
+               </div>
+            </div>
+
+            {/* DIFF BANNER — shown when comparing to previous snapshot */}
+            {previousSnapshot && (
+               <div className="mb-8 p-5 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                  <p className="text-indigo-400 font-black text-[9px] uppercase tracking-widest mb-3">Snapshot Delta vs Previous Command</p>
+                  <div className="flex gap-6 flex-wrap text-sm">
+                     {previousSnapshot.marketStatus.label !== snapshot.marketStatus.label && (
+                        <div>
+                           <span className="text-slate-500">Market Status: </span>
+                           <span className="text-red-400 line-through">{previousSnapshot.marketStatus.label}</span>
+                           <span className="text-slate-600 mx-1">→</span>
+                           <span className="text-green-400">{snapshot.marketStatus.label}</span>
+                        </div>
+                     )}
+                     {snapshot.executionTargets.length !== previousSnapshot.executionTargets.length && (
+                        <div className={snapshot.executionTargets.length > previousSnapshot.executionTargets.length ? 'text-green-400' : 'text-red-400'}>
+                           {snapshot.executionTargets.length > previousSnapshot.executionTargets.length ? '+' : ''}{snapshot.executionTargets.length - previousSnapshot.executionTargets.length} execution targets vs last snapshot
+                        </div>
+                     )}
+                  </div>
+               </div>
+            )}
+
+            {/* TOP HEADER SECTION */}
+            <div className="flex flex-col md:flex-row justify-between items-start mb-14 gap-8">
+               <div className="space-y-6">
+                  <div className="flex items-center gap-4">
+                     <div className="bg-blue-600 px-3 py-1 rounded text-[10px] font-black text-white uppercase tracking-widest shadow-lg shadow-blue-900/40">Institutional Product</div>
+                     <span className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em]">ID: {snapshot.id}</span>
+                  </div>
+                  <h2 className="text-8xl font-black text-white tracking-tighter uppercase leading-none">Market Command</h2>
+                  <div className="flex items-center gap-12 pt-2">
+                     <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Active Perimeter</span>
+                        <span className="text-sm font-bold text-white uppercase tracking-tight">{snapshot.context.role} | {snapshot.context.geography}</span>
+                     </div>
+                     <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Snapshot Validity</span>
+                        <span className={`text-sm font-bold uppercase tracking-tight ${snapshotExpiry && snapshotExpiry > Date.now() ? 'text-amber-500' : 'text-red-500'}`}>
+                           {snapshotExpiry ? `Expires: ${formatExpiry(snapshotExpiry)}` : snapshot.expiry}
+                        </span>
+                     </div>
+                  </div>
+               </div>
+               {/* Fix 5: Save + Run New pair replacing single Recalibrate */}
+               <div className="flex flex-col gap-3 items-end shrink-0">
+                  <button
+                     onClick={handleSaveSnapshot}
+                     className="flex items-center gap-2 text-slate-400 hover:text-green-400 transition-all text-[10px] font-black uppercase tracking-[0.2em] bg-white/5 px-6 py-3 rounded-xl border border-white/10 hover:border-green-500/30"
+                  >
+                     <BookmarkPlus size={14} /> Save Snapshot
+                  </button>
+                  <button
+                     onClick={handleRunNewCommand}
+                     className="flex items-center gap-3 text-slate-300 hover:text-white transition-all text-[10px] font-black uppercase tracking-[0.2em] bg-white/5 px-6 py-3 rounded-xl border border-white/10 group"
+                  >
+                     <Play size={14} className="group-hover:text-blue-400 transition-colors" /> Run New Command
+                  </button>
+               </div>
+            </div>
+
+            {/* TWO COLUMN GRID */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
                {/* LEFT COLUMN: PRIMARY DIRECTIVES */}
                <div className="lg:col-span-8 space-y-20">
 
@@ -417,33 +634,87 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
 
                   {/* 2. EXECUTION TARGETS */}
                   <div className="space-y-10">
+                     {/* Fix 1: AI-Curated badge + tooltip replacing Verified Headcount */}
                      <div className="flex items-center justify-between px-2">
                         <div className="flex items-center gap-4 text-white">
                            <h3 className="text-xl font-black uppercase tracking-widest">2. Execution Targets</h3>
                         </div>
-                        <div className="flex items-center gap-2 text-green-500 bg-green-500/5 px-4 py-1.5 rounded-full border border-green-500/10">
-                           <ShieldCheck size={16} />
-                           <span className="text-[10px] font-black uppercase tracking-widest">Verified Headcount</span>
+                        <div className="relative group flex items-center gap-2 text-blue-400 bg-blue-500/5 px-4 py-1.5 rounded-full border border-blue-500/10 cursor-default">
+                           <Target size={14} />
+                           <span className="text-[10px] font-black uppercase tracking-widest">AI-Curated Targets</span>
+                           <Info size={11} className="text-blue-500/60" />
+                           {/* Tooltip */}
+                           <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-[#16161E] border border-blue-500/20 rounded-xl text-left shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                              <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                                 These targets are generated by AI analysis of public market signals and are not verified live job postings. Always verify open roles before applying.
+                              </p>
+                           </div>
                         </div>
                      </div>
                      <div className="bg-[#111118] border border-white/5 rounded-[3.5rem] overflow-hidden shadow-2xl p-8 space-y-4">
-                        {hasExecutionTargets ? snapshot.executionTargets.map((target, i) => (
-                           <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center p-10 bg-white/[0.02] border border-white/5 rounded-[2.5rem] group hover:border-blue-500/30 transition-all hover:bg-white/[0.04]">
-                              <div className="md:col-span-4 space-y-1">
-                                 <p className="text-white font-black text-3xl uppercase tracking-tight leading-none">{target.company}</p>
-                                 <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest pt-1">{target.roleTitle}</p>
-                              </div>
-                              <div className="md:col-span-6">
-                                 <p className="text-slate-500 text-sm font-medium leading-relaxed italic">"{target.fitReason}"</p>
-                              </div>
-                              <div className="md:col-span-2 text-right">
-                                 <div className="space-y-1">
-                                    <p className="text-white font-black text-2xl">{target.confidence}%</p>
-                                    <p className="text-slate-700 text-[9px] font-black uppercase tracking-widest">Signal Score</p>
+                        {hasExecutionTargets ? snapshot.executionTargets
+                           .filter(t => t.confidence >= 50) // Fix 1: filter out <50% targets
+                           .map((target, i) => {
+                              const fit = getFitLabel(target.confidence);
+                              const isExpanded = expandedTargetIdx === i;
+                              return (
+                                 <div key={i} className={`border rounded-[2.5rem] transition-all ${isExpanded ? 'border-blue-500/30 bg-blue-500/5' : 'border-white/5 bg-white/[0.02] hover:border-blue-500/20 hover:bg-white/[0.04]'}`}>
+                                    {/* Target Row — clickable */}
+                                    <div
+                                       className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center p-8 cursor-pointer group"
+                                       onClick={() => setExpandedTargetIdx(isExpanded ? null : i)}
+                                    >
+                                       <div className="md:col-span-4 space-y-1">
+                                          <p className="text-white font-black text-2xl uppercase tracking-tight leading-none">{target.company}</p>
+                                          <p className="text-blue-500 text-[10px] font-black uppercase tracking-widest pt-1">{target.roleTitle}</p>
+                                       </div>
+                                       <div className="md:col-span-6">
+                                          <p className="text-slate-500 text-sm font-medium leading-relaxed italic">"{target.fitReason}"</p>
+                                       </div>
+                                       {/* Fix 1: Fit Score pill instead of raw % */}
+                                       <div className="md:col-span-2 flex items-center justify-end gap-2">
+                                          <div className={`px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-wide ${fit.color} ${fit.bg} ${fit.border}`}>
+                                             {fit.label}
+                                          </div>
+                                          {isExpanded ? <ChevronUp size={16} className="text-slate-600" /> : <ChevronDown size={16} className="text-slate-600" />}
+                                       </div>
+                                    </div>
+                                    {/* Expanded Action Panel */}
+                                    {isExpanded && (
+                                       <div className="px-8 pb-8 animate-in slide-in-from-top-2 duration-200">
+                                          <div className="h-[1px] bg-white/5 mb-6" />
+                                          <div className="flex items-center gap-1.5 mb-4">
+                                             <Info size={11} className="text-slate-600" />
+                                             <p className="text-[9px] text-slate-600 font-medium">AI-curated target. Verify open roles on LinkedIn or Glassdoor before applying.</p>
+                                          </div>
+                                          <div className="flex flex-wrap gap-3">
+                                             <a
+                                                href={getLinkedInJobsUrl(target.roleTitle, target.company)}
+                                                target="_blank" rel="noopener noreferrer"
+                                                className="flex items-center gap-2 text-blue-400 hover:text-white border border-blue-500/30 hover:border-blue-500 bg-blue-500/5 hover:bg-blue-500/10 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                             >
+                                                <ExternalLink size={12} /> Verify Openings on LinkedIn
+                                             </a>
+                                             <a
+                                                href={getGlassdoorUrl(target.company)}
+                                                target="_blank" rel="noopener noreferrer"
+                                                className="flex items-center gap-2 text-slate-400 hover:text-white border border-white/10 hover:border-white/20 bg-white/5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                             >
+                                                <ExternalLink size={12} /> Glassdoor Culture
+                                             </a>
+                                             <button
+                                                onClick={() => setView('tracker')}
+                                                className="flex items-center gap-2 text-slate-400 hover:text-white border border-white/10 hover:border-green-500/30 bg-white/5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                             >
+                                                <Plus size={12} /> Track Application
+                                             </button>
+                                          </div>
+                                          <p className="mt-3 text-[9px] text-slate-700 italic">Validity window: {target.validityWindow || '2–4 weeks'}</p>
+                                       </div>
+                                    )}
                                  </div>
-                              </div>
-                           </div>
-                        )) : (
+                              );
+                           }) : (
                            <div className="text-center py-12 text-slate-600">
                               <p className="text-sm font-bold uppercase tracking-widest">No execution targets identified</p>
                               <p className="text-xs mt-2">Try recalibrating with different parameters</p>
@@ -595,6 +866,30 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
                   </div>
                </div>
             </div>
+
+            {/* SNAPSHOT ARCHIVE - Fix 5 */}
+            {snapshotArchive.length > 0 && (
+               <div className="mt-12 border-t border-white/5 pt-8">
+                  <button onClick={() => setShowArchive(!showArchive)} className="flex items-center gap-2 text-slate-600 hover:text-slate-400 transition-colors text-[9px] font-black uppercase tracking-widest mb-4">
+                     {showArchive ? <ChevronUp size={12} /> : <ChevronDown size={12} />} Previous Commands ({snapshotArchive.length})
+                  </button>
+                  {showArchive && (
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in slide-in-from-top-2 duration-200">
+                        {snapshotArchive.map((entry) => (
+                           <div key={entry.id} className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-1 hover:border-white/10 transition-all">
+                              <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{new Date(entry.generatedAt).toLocaleDateString()}</p>
+                              <p className="text-white font-black text-sm uppercase">{entry.role}</p>
+                              <p className="text-slate-500 text-[10px]">{entry.geography}</p>
+                              <div className="flex justify-between pt-1">
+                                 <span className="text-[9px] font-black text-blue-500 uppercase">{entry.marketStatus}</span>
+                                 <span className="text-[9px] text-slate-700">{entry.executionTargetCount} targets</span>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  )}
+               </div>
+            )}
          </div>
       );
    }
@@ -668,6 +963,29 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
             </p>
          </div>
 
+         {/* Resume Context Banner — shown when analysis data available */}
+         {analysisResult && (
+            <div className="p-5 bg-blue-500/5 border border-blue-500/20 rounded-2xl flex items-center justify-between gap-4">
+               <div className="flex items-center gap-3">
+                  <Info size={16} className="text-blue-500 shrink-0" />
+                  <div>
+                     <p className="text-blue-400 font-black text-[10px] uppercase tracking-widest">Analysis context detected</p>
+                     <p className="text-slate-500 text-[11px] font-medium">{analysisResult.role} · Score: {analysisResult.overallScore}%</p>
+                  </div>
+               </div>
+               <button
+                  onClick={() => { setUseResumeContext(v => !v); setTargetRole(analysisResult.role); }}
+                  className={`text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl border transition-all ${
+                     useResumeContext
+                        ? 'bg-blue-600 border-blue-500 text-white'
+                        : 'border-blue-500/30 text-blue-400 hover:bg-blue-500/10'
+                  }`}
+               >
+                  {useResumeContext ? '✓ Personalized' : 'Personalize to My Resume'}
+               </button>
+            </div>
+         )}
+
          <div className="bg-[#16161E] border border-[#1D1D26] rounded-[4rem] p-16 space-y-12 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 p-10 opacity-[0.02] text-white pointer-events-none">
                <Radar size={320} />
@@ -708,6 +1026,26 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
                   <option value="Principal/Director (12+ years)">Principal/Director (12+ years)</option>
                </select>
             </div>
+
+            {/* Hot Segments — Fix 4 */}
+            {targetRole.trim() && (
+               <div className="space-y-3 relative z-10">
+                  <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Hot Segments for {targetRole.split(' ').slice(-2).join(' ')}</p>
+                  <div className="flex flex-wrap gap-2">
+                     {getHotSegments(targetRole).map((seg, i) => (
+                        <button
+                           key={i}
+                           onClick={() => setGeography(`${geography} · ${seg}`)}
+                           className="text-[10px] font-black text-blue-400 border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/15 px-3 py-1.5 rounded-full uppercase tracking-wide transition-all"
+                        >
+                           + {seg}
+                        </button>
+                     ))}
+                  </div>
+                  <p className="text-[8px] text-slate-700">Click to append to geography/context · Q1 2026 data</p>
+               </div>
+            )}
+
             <button
                onClick={handleGenerate}
                disabled={!targetRole.trim()}

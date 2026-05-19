@@ -44,6 +44,7 @@ export function AIReviewView(props: AIReviewViewProps) {
 
   const [step, setStep] = useState<'upload' | 'paste' | 'analyze' | 'processing' | 'quota_error'>('upload');
   const [targetRole, setTargetRole] = useState('');
+  const [targetJD, setTargetJD] = useState('');
   const [roleTrack, setRoleTrack] = useState<RoleTrack>('BIG_TECH');
   const [resumeText, setResumeText] = useState(pendingResumeText || '');
   const [isParsing, setIsParsing] = useState(false);
@@ -152,7 +153,7 @@ export function AIReviewView(props: AIReviewViewProps) {
     }
     RESUME TEXT: ${resumeText}`;
 
-    const id = await dispatchJob('ANALYSIS', { targetRole, roleTrack, resumeText });
+    const id = await dispatchJob('ANALYSIS', { targetRole, roleTrack, resumeText, targetJD });
     setCurrentJobId(id);
     setStep('processing');
   }
@@ -187,25 +188,56 @@ export function AIReviewView(props: AIReviewViewProps) {
 
   if (step === 'paste') {
     return (
-      <div className="max-w-4xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="max-w-6xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="mb-12 flex items-center gap-4">
           <button onClick={() => setStep('upload')} className="text-slate-500 hover:text-white transition-colors">
             <ArrowLeft size={24} />
           </button>
           <div>
-            <h2 className="text-4xl font-bold text-white mb-2 uppercase tracking-tight">Manual Ingestion</h2>
+            <h2 className="text-4xl font-bold text-white mb-2 uppercase tracking-tight">Target Acquisition</h2>
+            <p className="text-slate-400 font-medium">Provide your source resume and the target job description to establish the baseline.</p>
           </div>
         </div>
-        <textarea
-          value={resumeText}
-          onChange={(e) => setResumeText(e.target.value)}
-          placeholder="Paste resume text here..."
-          className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white h-96 resize-none outline-none focus:border-blue-500 transition-all font-mono text-sm leading-relaxed"
-        />
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 px-1">
+              <FileText size={16} className="text-blue-500" />
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                Source Resume Text
+              </label>
+            </div>
+            <textarea
+              value={resumeText}
+              onChange={(e) => setResumeText(e.target.value)}
+              placeholder="Paste your current resume text here..."
+              className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white h-[500px] resize-none outline-none focus:border-blue-500 transition-all font-mono text-xs leading-relaxed custom-scrollbar"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 px-1">
+              <Target size={16} className="text-green-500" />
+              <div className="flex flex-col">
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                  Target Job Posting
+                </label>
+                <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Paste the full job description you are applying to</span>
+              </div>
+            </div>
+            <textarea
+              value={targetJD}
+              onChange={(e) => setTargetJD(e.target.value)}
+              placeholder="Paste the target job description here..."
+              className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white h-[500px] resize-none outline-none focus:border-green-500/50 transition-all font-sans text-sm leading-relaxed custom-scrollbar"
+            />
+          </div>
+        </div>
+
         <button
-          disabled={!resumeText.trim()}
+          disabled={!resumeText.trim() || !targetJD.trim()}
           onClick={() => setStep('analyze')}
-          className="w-full mt-6 bg-blue-600 hover:bg-blue-50 text-white font-black py-6 rounded-3xl flex items-center justify-center gap-4 transition-all disabled:opacity-30 uppercase tracking-[0.2em] text-xs"
+          className="w-full mt-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-7 rounded-3xl flex items-center justify-center gap-4 transition-all disabled:opacity-30 uppercase tracking-[0.25em] text-xs shadow-2xl shadow-blue-500/25"
         >
           Confirm Ingestion <ArrowRight size={20} />
         </button>

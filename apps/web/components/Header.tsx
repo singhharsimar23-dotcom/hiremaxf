@@ -137,6 +137,13 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             isLocked={!isElite}
           />
 
+          <NavLink
+            label="Market Radar"
+            active={currentView === 'market-outlook'}
+            onClick={() => setView('market-outlook')}
+            icon={<Activity size={18} className="opacity-70 text-blue-400" />}
+          />
+
 
 
           <NavLink
