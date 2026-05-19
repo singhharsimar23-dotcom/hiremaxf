@@ -138,15 +138,6 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
           />
 
           <NavLink
-            label="Market Radar"
-            active={currentView === 'market-outlook'}
-            onClick={() => setView('market-outlook')}
-            icon={<Activity size={18} className="opacity-70 text-blue-400" />}
-          />
-
-
-
-          <NavLink
             label="Rebuild"
             active={currentView === 'rebuild-standalone'}
             onClick={() => setView('rebuild-standalone')}
@@ -299,7 +290,6 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
               <div className="h-[1px] bg-white/5 my-2" />
               <NavLink label="Intelligence" active={currentView === 'full-review'} onClick={() => { setView('full-review'); setMobileMenuOpen(false); }} icon={<ShieldCheck size={18} />} isLocked={!isPro} />
               <NavLink label="Market Insights" active={currentView === 'career-intelligence'} onClick={() => { setView('career-intelligence'); setMobileMenuOpen(false); }} icon={<TrendingUp size={18} />} isLocked={!isElite} />
-              <NavLink label="Market Radar" active={currentView === 'market-outlook'} onClick={() => { setView('market-outlook'); setMobileMenuOpen(false); }} icon={<Activity size={18} className="text-blue-400" />} />
               <NavLink label="Rebuild" active={currentView === 'rebuild-standalone'} onClick={() => { setView('rebuild-standalone'); setMobileMenuOpen(false); }} icon={<Sparkles size={18} />} isLocked={!isPro} />
               <NavLink label="Interview Prep" active={currentView === 'interview-prep'} onClick={() => { setView('interview-prep'); setMobileMenuOpen(false); }} icon={<MessageSquare size={18} />} isLocked={!isPro} />
               <NavLink label="Cover Letter" active={currentView === 'cover-letter'} onClick={() => { setView('cover-letter'); setMobileMenuOpen(false); }} icon={<FileSearch size={18} />} isLocked={!isPro} />
