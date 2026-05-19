@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { AppView } from '../types';
-import { Mail, Zap, ShieldCheck } from 'lucide-react';
+import { Mail, Zap, ShieldCheck, Instagram } from 'lucide-react';
 
 interface FooterProps {
   setView: (v: AppView) => void;
@@ -49,6 +49,25 @@ export const Footer: React.FC<FooterProps> = ({ setView }) => {
               <Mail size={14} />
               hiremax.ai@gmail.com
             </a>
+            <div className="mt-5 p-4 rounded-xl bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/20 flex flex-col gap-2 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/5 rounded-full blur-xl -z-10 group-hover:bg-pink-500/10 transition-colors" />
+              <span className="text-[10px] font-black text-pink-400 uppercase tracking-widest flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
+                Career Hacks & Tips
+              </span>
+              <p className="text-xs text-slate-300">
+                Join our Instagram community for daily resume secrets, hiring manager scripts, and interview prep guides.
+              </p>
+              <a
+                href="https://www.instagram.com/hiremax.ai/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 px-4 py-2 mt-1 rounded-lg bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 hover:from-purple-500 hover:to-orange-400 text-white text-xs font-bold transition-all transform hover:scale-[1.02] shadow-lg shadow-pink-500/25"
+              >
+                <Instagram size={13} />
+                Follow @hiremax.ai
+              </a>
+            </div>
           </div>
 
           {/* Product */}

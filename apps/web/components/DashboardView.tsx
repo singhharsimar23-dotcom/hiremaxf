@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import {
   Sparkles, ShieldCheck, Briefcase, Linkedin, Mail, FileText,
   TrendingUp, Zap, ChevronRight, Clock, AlertTriangle, Check,
-  BarChart2, Target, ArrowRight, Star, Activity
+  BarChart2, Target, ArrowRight, Star, Activity, Instagram
 } from 'lucide-react';
 
 interface Props {
@@ -252,6 +252,34 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
           </div>
         </div>
       )}
+
+      {/* Instagram Community Banner */}
+      <div className="bg-gradient-to-r from-[#180F2B] via-[#2A1137] to-[#2E1815] border border-pink-500/20 rounded-[2rem] p-6 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden group">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-pink-500/5 rounded-full blur-3xl -z-10 group-hover:bg-pink-500/10 transition-colors duration-500" />
+        <div className="flex items-center gap-5">
+          <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center shrink-0 border border-purple-500/30 bg-[#0B0F1A] p-0.5">
+            <img src="/favicon.png" alt="HireMax Logo" className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <span className="text-[9px] font-black uppercase tracking-widest text-pink-400 bg-pink-500/10 px-2.5 py-1 rounded-full border border-pink-500/25">Join the Community</span>
+            <h3 className="text-xl font-black text-white tracking-tight mt-2 flex items-center gap-2">
+              Follow HireMax on Instagram
+            </h3>
+            <p className="text-slate-400 text-xs mt-1 max-w-xl">
+              Get daily resume rewrite secrets, Boolean search keywords for recruiters, salary negotiation scripts, and modern career OS updates!
+            </p>
+          </div>
+        </div>
+        <a
+          href="https://www.instagram.com/hiremax.ai/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 hover:from-purple-500 hover:to-orange-400 text-white text-sm font-black transition-all transform hover:scale-[1.03] shadow-lg shadow-pink-500/25 shrink-0"
+        >
+          <Instagram size={16} />
+          Follow @hiremax.ai
+        </a>
+      </div>
 
       {/* Tool grid */}
       <div className="mb-4 flex items-center justify-between">

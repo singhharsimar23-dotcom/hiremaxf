@@ -24,7 +24,8 @@ import {
   Eye,
   Briefcase,
   MessageSquare,
-  FileSearch
+  FileSearch,
+  Instagram
 } from 'lucide-react';
 import { AppView, UserPlan } from '../types';
 
@@ -97,8 +98,8 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
           className="flex items-center gap-3 cursor-pointer group shrink-0"
           onClick={() => setView('dashboard')}
         >
-          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-105">
-            <Shield className="text-black" size={24} />
+          <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 border border-[#2D313D] bg-[#0E1118]">
+            <img src="/favicon.png" alt="HireMax Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-white font-extrabold text-xl tracking-tight hidden sm:block">HireMax</h1>
         </div>
@@ -188,6 +189,15 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
         >
           {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
+        <a
+          href="https://www.instagram.com/hiremax.ai/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden lg:flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-gradient-to-r from-purple-900/40 via-pink-900/40 to-orange-900/20 border border-pink-500/20 text-pink-400 hover:text-white hover:border-pink-500/50 hover:scale-[1.02] shadow-lg shadow-pink-500/10 shrink-0 animate-in fade-in duration-300"
+        >
+          <Instagram size={14} className="animate-pulse text-pink-400" />
+          Follow @hiremax.ai
+        </a>
         <button
           onClick={onNewResume}
           className="hidden md:flex items-center gap-2 bg-[#1A1D26] hover:bg-[#252833] text-white px-5 py-2.5 rounded-xl font-bold text-sm border border-[#2D313D] transition-all"
