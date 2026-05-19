@@ -60,6 +60,7 @@ function App() {
     const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
 
     const [resumeHistory, setResumeHistory] = useState<ResumeGroup[]>([]);
+    const [coverLetterHistory, setCoverLetterHistory] = useState<any[]>([]);
     const [editingResumeId, setEditingResumeId] = useState<string | null>(null);
     const [editingVersionId, setEditingVersionId] = useState<string | null>(null);
     const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
@@ -407,6 +408,7 @@ function App() {
                         setProfile(null);
                         setResumeHistory([]);
                         setAnalysisHistory({});
+                        setCoverLetterHistory([]);
                         
                         // If there was an OAuth error in the URL, clean it up
                         if (window.location.hash.includes('error=') || window.location.search.includes('error=')) {
@@ -435,11 +437,12 @@ function App() {
 
     async function fetchUserData(authUser: any) {
         try {
-            // Fetch profile, resumes, and analyses in parallel for 3x faster hydration
-            const [profileRes, resumesRes, analysesRes] = await Promise.all([
+            // Fetch profile, resumes, analyses, and cover letters in parallel for 3x faster hydration
+            const [profileRes, resumesRes, analysesRes, coverLettersRes] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
                 supabase.from('resumes').select('*, resume_versions(*)').eq('user_id', authUser.id).order('created_at', { ascending: false }),
-                supabase.from('analyses').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false })
+                supabase.from('analyses').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false }),
+                supabase.from('cover_letters').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false })
             ]);
 
             let updatedProfile = profileRes.data as UserProfile | null;
@@ -503,18 +506,26 @@ function App() {
                 setAnalysisHistory(hist);
                 if (analyses.length > 0) setActiveAnalysisId(analyses[0].id);
             }
+
+            const coverLetters = coverLettersRes.data;
+            if (coverLetters) {
+                setCoverLetterHistory(coverLetters);
+            }
         } catch (e) {
             console.error("Failed to hydrate user profile/data:", e);
         }
     }
 
-    // Subscribe to resume_versions for live history updates once per user session
+    // Subscribe to resume_versions and cover_letters for live history updates once per user session
     useEffect(() => {
         if (!user) return;
 
         const channel = supabase
-            .channel(`resume_versions_live_${user.id}_${Math.random().toString(36).substring(2, 9)}`)
+            .channel(`live_history_${user.id}_${Math.random().toString(36).substring(2, 9)}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'resume_versions' }, () => {
+                fetchUserData(user);
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'cover_letters' }, () => {
                 fetchUserData(user);
             })
             .subscribe();
@@ -546,9 +557,19 @@ function App() {
             .eq('id', user.id)
             .select()
             .single();
-
         if (!error && updated) {
             setProfile(updated as UserProfile);
+        }
+    };
+
+    const handleDeleteCoverLetter = async (id: string) => {
+        try {
+            const { error } = await supabase.from('cover_letters').delete().eq('id', id);
+            if (!error) {
+                setCoverLetterHistory(prev => prev.filter(c => c.id !== id));
+            }
+        } catch (err) {
+            console.error("Failed to delete cover letter:", err);
         }
     };
 
@@ -751,6 +772,8 @@ function App() {
                             {activeView === 'profile' && <ProfileView />}
                             {activeView === 'history' && <ResumeHistoryView
                                 history={resumeHistory}
+                                coverLetters={coverLetterHistory}
+                                onDeleteCoverLetter={handleDeleteCoverLetter}
                                 analysisHistory={analysisHistory}
                                 onEdit={function (gid, vid) {
                                     setEditingResumeId(gid);
@@ -769,7 +792,7 @@ function App() {
 
                             {activeView === 'preview' && <ExecutionPreviewView onNavigate={(view: AppView, id?: string) => handleSetView(view, id)} />}
                             {activeView === 'resume-editor' && <ResumeBuilder plan={plan} groupId={editingResumeId} versionId={editingVersionId} history={resumeHistory} onBack={function () { handleSetView('dashboard'); }} />}
-                            {activeView === 'pricing' && <Pricing setPlan={async function (p) {
+                            {activeView === 'pricing' && <Pricing user={user} setPlan={async function (p) {
                                 if (user) {
                                     await supabase.from('profiles').update({ plan: p }).eq('id', user.id);
                                     setProfile(Object.assign({}, profile, { plan: p }));

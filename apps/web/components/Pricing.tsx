@@ -7,6 +7,7 @@ interface PricingProps {
   setPlan: (p: UserPlan) => void;
   setView: (v: AppView) => void;
   currentPlan: UserPlan;
+  user?: any;
 }
 
 interface PlanCardProps {
@@ -143,7 +144,7 @@ const PlanCard: React.FC<PlanCardProps> = ({ plan, currentPlan, onSelect, isElit
   );
 };
 
-export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan }) => {
+export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan, user }) => {
   const [isEliteAnimating, setIsEliteAnimating] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
   const [showRecommendation, setShowRecommendation] = useState(false);
@@ -181,9 +182,39 @@ export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan 
   };
 
   const handleSelect = (id: any) => {
-    const finalPlan = (id === 'Career Elite 6M' ? 'Career Elite' : id) as UserPlan;
-    setPlan(finalPlan);
-    setView('dashboard');
+    if (id === 'Starter') {
+      setPlan('Starter');
+      setView('dashboard');
+      return;
+    }
+
+    if (!user) {
+      setView('auth');
+      return;
+    }
+
+    let checkoutLink = '';
+    if (id === 'Career Pro') {
+      checkoutLink = import.meta.env.VITE_DODO_PAYMENTS_PRO_LINK || 'https://checkout.dodopayments.com/buy/product_placeholder_pro';
+    } else if (id === 'Career Elite') {
+      checkoutLink = import.meta.env.VITE_DODO_PAYMENTS_ELITE_LINK || 'https://checkout.dodopayments.com/buy/product_placeholder_elite';
+    } else if (id === 'Career Elite 6M') {
+      checkoutLink = import.meta.env.VITE_DODO_PAYMENTS_ELITE_6M_LINK || 'https://checkout.dodopayments.com/buy/product_placeholder_elite_6m';
+    }
+
+    if (checkoutLink) {
+      try {
+        const url = new URL(checkoutLink);
+        url.searchParams.set('metadata_user_id', user.id);
+        url.searchParams.set('metadata_plan', id);
+        url.searchParams.set('metadata_email', user.email);
+        
+        window.location.href = url.toString();
+      } catch (err) {
+        console.error('Failed to construct checkout URL:', err);
+        alert('Payment redirect failed. Please try again or contact support.');
+      }
+    }
   };
 
   const plans = [

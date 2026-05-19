@@ -15,6 +15,8 @@ export interface Env {
   WORKER_SECRET: string;
   KV_JOBS: KVNamespace;
   DB_POOLER_URL?: string;
+  DODO_WEBHOOK_SECRET?: string;
+  DODO_PAYMENTS_API_KEY?: string;
 }
 
 /**

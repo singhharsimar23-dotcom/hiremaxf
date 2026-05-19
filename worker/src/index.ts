@@ -117,6 +117,81 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
     const path = url.pathname;
     const method = request.method;
 
+    if (method === 'POST' && (path === '/webhook' || path === '/api/webhook/dodo-payments')) {
+      const rawBody = await request.text();
+      const headers = request.headers;
+
+      const webhookSecret = env.DODO_WEBHOOK_SECRET;
+      if (webhookSecret) {
+        const verified = await verifyDodoSignature(rawBody, headers, webhookSecret);
+        if (!verified) {
+          console.warn('[Dodo Webhook] Invalid signature received.');
+          return jsonError('Invalid webhook signature', 401, Date.now() - startTime);
+        }
+      } else {
+        console.warn('[Dodo Webhook] DODO_WEBHOOK_SECRET is not set. Signature verification bypassed.');
+      }
+
+      let payload: any;
+      try {
+        payload = JSON.parse(rawBody);
+      } catch (err) {
+        console.error('[Dodo Webhook] Failed to parse payload:', err);
+        return jsonError('Invalid JSON body', 400, Date.now() - startTime);
+      }
+
+      const eventType = payload.type;
+      const data = payload.data;
+      
+      console.log(`[Dodo Webhook] Received event: ${eventType}`);
+
+      const fulfillmentEvents = [
+        'subscription.active',
+        'subscription.created',
+        'subscription.updated',
+        'payment.succeeded'
+      ];
+
+      if (fulfillmentEvents.includes(eventType)) {
+        const metadata = data?.metadata;
+        const userId = metadata?.user_id;
+        let planName = metadata?.plan;
+
+        if (!userId || !planName) {
+          console.warn('[Dodo Webhook] Missing user_id or plan in metadata:', metadata);
+          return jsonOk({ status: 'ignored', reason: 'Missing user_id or plan in metadata' }, Date.now() - startTime);
+        }
+
+        let dbPlan: string = planName;
+        const normalized = planName.toLowerCase().replace(/\s+/g, '');
+        if (normalized.includes('pro')) {
+          dbPlan = 'Career Pro';
+        } else if (normalized.includes('elite')) {
+          dbPlan = 'Career Elite';
+        } else if (normalized.includes('starter') || normalized.includes('free')) {
+          dbPlan = 'Starter';
+        }
+
+        const { getClient } = await import('./infra/db');
+        const db = getClient(env);
+
+        const { error } = await db
+          .from('profiles')
+          .update({ plan: dbPlan })
+          .eq('id', userId);
+
+        if (error) {
+          console.error('[Dodo Webhook] Failed to update user profile in Supabase:', error);
+          return jsonError('Database update failed', 500, Date.now() - startTime);
+        }
+
+        console.log(`[Dodo Webhook] Successfully upgraded user ${userId} to plan ${dbPlan}`);
+        return jsonOk({ status: 'fulfilled', user_id: userId, plan: dbPlan }, Date.now() - startTime);
+      }
+
+      return jsonOk({ status: 'ignored', reason: 'Event type not processed for fulfillment' }, Date.now() - startTime);
+    }
+
     if (method === 'GET' && path === '/health') {
       if (!requireWorkerAuth(request, env)) return jsonError('Unauthorized', 401);
       const { getClient } = await import('./infra/db');
@@ -580,6 +655,81 @@ async function handleScheduled(event: ScheduledEvent, env: Env, ctx: ExecutionCo
     await Promise.all([runIngestion('ALPHA'), runIngestion('GAMMA')]);
     abortController.abort();
   }
+}
+
+async function verifyDodoSignature(
+  rawBody: string,
+  headers: Headers,
+  secret: string
+): Promise<boolean> {
+  const msgId = headers.get('webhook-id');
+  const timestamp = headers.get('webhook-timestamp');
+  const signatureHeader = headers.get('webhook-signature');
+
+  if (!msgId || !timestamp || !signatureHeader) {
+    return false;
+  }
+
+  const timestampMs = parseInt(timestamp, 10) * 1000;
+  const nowMs = Date.now();
+  if (isNaN(timestampMs) || Math.abs(nowMs - timestampMs) > 5 * 60 * 1000) {
+    console.warn('[webhook] Timestamp outside valid range:', timestamp);
+    return false;
+  }
+
+  const toSign = `${msgId}.${timestamp}.${rawBody}`;
+  const encoder = new TextEncoder();
+  
+  let key: Uint8Array;
+  if (secret.startsWith('whsec_')) {
+    const base64Part = secret.substring(6);
+    const binaryString = atob(base64Part);
+    key = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      key[i] = binaryString.charCodeAt(i);
+    }
+  } else {
+    key = encoder.encode(secret);
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    key,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signatureBuffer = await crypto.subtle.sign(
+    'HMAC',
+    cryptoKey,
+    encoder.encode(toSign)
+  );
+
+  const signatures = signatureHeader.split(' ');
+  for (const sig of signatures) {
+    const parts = sig.split(',');
+    if (parts.length !== 2 || parts[0] !== 'v1') continue;
+    const headerSigBase64 = parts[1];
+
+    const headerSigBin = atob(headerSigBase64);
+    const headerSigBytes = new Uint8Array(headerSigBin.length);
+    for (let i = 0; i < headerSigBin.length; i++) {
+      headerSigBytes[i] = headerSigBin.charCodeAt(i);
+    }
+
+    const computedBytes = new Uint8Array(signatureBuffer);
+    if (computedBytes.length === headerSigBytes.length) {
+      let match = true;
+      for (let i = 0; i < computedBytes.length; i++) {
+        if (computedBytes[i] !== headerSigBytes[i]) {
+          match = false;
+        }
+      }
+      if (match) return true;
+    }
+  }
+
+  return false;
 }
 
 export default {

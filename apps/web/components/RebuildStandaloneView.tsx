@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Sparkles,
   UploadCloud,
@@ -7,9 +7,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Zap,
-  FileText,
   Key,
-  ShieldX,
   Target,
   Shield,
   Building2,
@@ -25,7 +23,8 @@ import {
   Phone,
   MapPin,
   Link as LinkIcon,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 import { UserPlan, StructuredResume, ResumeGroup, RoleTrack, BackgroundJob, JobType } from '../types';
 import mammoth from 'mammoth';
@@ -121,26 +120,8 @@ const StructuredResumePreview: React.FC<{ resume: StructuredResume }> = ({ resum
   </div>
 );
 
-const BundleCard: React.FC<{ count: number; price: string; total: string; onBuy: () => void; popular?: boolean }> = ({ count, price, total, onBuy, popular }) => (
-  <div className={`backdrop-blur-md bg-[#161824]/60 border ${popular ? 'border-blue-500/80 shadow-2xl shadow-blue-500/10 scale-105' : 'border-white/5 shadow-xl'} p-8 rounded-[2.5rem] flex flex-col items-center text-center group transition-all duration-300 relative hover:-translate-y-1`}>
-    {popular && (
-      <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">Most Popular</span>
-    )}
-    <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 mb-6">
-      <Zap size={24} />
-    </div>
-    <h4 className="text-xl font-black text-white mb-1 uppercase tracking-tight">{count} {count === 1 ? 'Resume' : 'Resumes'}</h4>
-    <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-4">Rebuild Bundle</p>
-    <p className="text-5xl font-black text-white mb-2">{total}</p>
-    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-8">{price} / resume</p>
-    <button onClick={onBuy} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-2xl transition-all duration-300 uppercase tracking-widest text-[11px] shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5 active:translate-y-0">
-      Buy & Start Rebuild
-    </button>
-  </div>
-);
-
 export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ plan, credits, setCredits, onRebuildSuccess, onUpgrade, history, preFilledContext, activeJobs, dispatchJob }) => {
-  const [step, setStep] = useState<'marketing' | 'form' | 'processing' | 'result' | 'quota_error'>('form');
+  const [step, setStep] = useState<'form' | 'processing' | 'result' | 'quota_error'>('form');
   const [loading, setLoading] = useState(false);
   const [resumeText, setResumeText] = useState('');
   const [selectedResumeId, setSelectedResumeId] = useState<string>('');
@@ -159,11 +140,9 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     industry: ''
   });
 
-  // Background Job Logic: Specific ID tracking (REL-010)
   const [trackingJobId, setTrackingJobId] = useState<string | null>(null);
 
   useEffect(() => {
-    // SECURE: Re-hydrate tracking on mount
     const activeJob = Object.values(activeJobs).find(j => j.type === 'REBUILD' && j.status === 'RUNNING');
     if (activeJob && !trackingJobId) {
       setTrackingJobId(activeJob.id);
@@ -186,7 +165,6 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
         const extractedResume = result.data || result.newResume || result.resume || result;
 
         if (extractedResume && (extractedResume.contact || extractedResume.full_name)) {
-          // Normalize structure if coming from direct version result
           const finalResume = extractedResume.contact ? extractedResume : {
             contact: { full_name: extractedResume.full_name, email: extractedResume.email, phone: extractedResume.phone, location: extractedResume.location, links: extractedResume.links || [] },
             summary: extractedResume.summary,
@@ -231,25 +209,8 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     }
   }, [preFilledContext]);
 
-  const isStarter = plan === 'Starter';
-  const hasUnlimited = plan !== 'Starter';
-  const activeStep = (isStarter && credits <= 0 && step !== 'marketing' && step !== 'quota_error' && step !== 'result' && step !== 'processing') ? 'marketing' : step;
-
+  const isPro = plan !== 'Starter';
   const recentResumes = history.slice(0, 5);
-
-  const handleSelectKey = async () => {
-    try {
-      await window.aistudio?.openSelectKey?.();
-      startRebuild();
-    } catch (e) {
-      console.error("Key selection failed", e);
-    }
-  };
-
-  const handleBuy = (amount: number) => {
-    setCredits(credits + amount);
-    setStep('form');
-  };
 
   const selectSavedResume = (group: ResumeGroup) => {
     const version = group.versions.find(v => v.type === 'original') || group.versions[0];
@@ -336,7 +297,6 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
 
   const handleCommit = () => {
     if (rebuiltResume) {
-      if (!hasUnlimited && !preFilledContext) setCredits(Math.max(0, credits - 1));
       onRebuildSuccess(rebuiltResume, createdIds?.versionId || "", finalMeta.label, createdIds?.groupId);
     }
   };
@@ -346,7 +306,6 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     if (printWindow) {
       const content = document.getElementById('rebuild-preview-target')?.outerHTML;
       const resumeName = rebuiltResume?.contact.full_name || 'Resume';
-      // Strip original title to prevent branding in headers
       const styles = document.head.innerHTML.replace(/<title>.*?<\/title>/g, '');
 
       printWindow.document.write(`
@@ -378,7 +337,7 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     }
   };
 
-  if (activeStep === 'quota_error') {
+  if (step === 'quota_error') {
     return (
       <div className="max-w-3xl mx-auto py-24 px-10 text-center animate-in fade-in zoom-in duration-500">
         <div className="relative mb-12 flex justify-center">
@@ -409,19 +368,7 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     );
   }
 
-  if (activeStep === 'marketing') {
-    return (
-      <div className="max-w-6xl mx-auto py-24 px-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
-          <BundleCard count={1} price="$19" total="$19" onBuy={() => handleBuy(1)} />
-          <BundleCard count={3} price="$15" total="$45" onBuy={() => handleBuy(3)} popular />
-          <BundleCard count={5} price="$12" total="$60" onBuy={() => handleBuy(5)} />
-        </div>
-      </div>
-    );
-  }
-
-  if (activeStep === 'processing') {
+  if (step === 'processing') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh] gap-10">
         <Loader2 size={80} className="text-blue-500 animate-spin" strokeWidth={1.5} />
@@ -431,7 +378,7 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     );
   }
 
-  if (activeStep === 'result' && rebuiltResume) {
+  if (step === 'result' && rebuiltResume) {
     return (
       <div className="max-w-[1200px] mx-auto py-12 px-10 animate-in fade-in duration-700">
         <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
@@ -514,125 +461,150 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
         <div className="lg:col-span-8 space-y-10">
 
-          {/* Saved Resumes Selection */}
-          {recentResumes.length > 0 && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 px-1">
-                <FileIcon className="text-blue-450" size={16} />
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
-                  Select Saved Resume Source (Last 5)
-                </label>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {recentResumes.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => selectSavedResume(r)}
-                    className={`flex items-center gap-4 p-5 rounded-2xl border backdrop-blur-md transition-all duration-300 text-left hover:-translate-y-0.5 active:translate-y-0 ${selectedResumeId === r.id ? 'bg-gradient-to-r from-blue-600/15 to-indigo-600/15 border-blue-500/80 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-slate-950/40 border-white/5 hover:border-white/10 hover:bg-slate-900/40'}`}
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${selectedResumeId === r.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-slate-900 text-slate-550'}`}>
-                      <FileIcon size={18} />
-                    </div>
-                    <div className="flex-1 truncate">
-                      <p className="text-white font-bold text-xs truncate uppercase tracking-widest">{r.name}</p>
-                      <p className="text-slate-550 text-[9px] font-black uppercase tracking-widest mt-1">
-                        {r.versions && r.versions.length > 0 && r.versions[0] ? new Date(r.versions[0].createdAt).toLocaleDateString() : 'No date'}
-                      </p>
-                    </div>
-                    {selectedResumeId === r.id && <CheckCircle2 size={16} className="text-blue-500" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {errorFeedback && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-[2.5rem] p-8 mb-8 flex items-start gap-6 animate-in fade-in slide-in-from-top-4">
-              <AlertCircle className="w-8 h-8 text-red-500 mt-1 shrink-0" />
-              <div>
-                <p className="text-red-400 font-black uppercase text-xs tracking-widest">Rebuild Failure</p>
-                <p className="text-red-300/70 text-sm mt-2 font-medium leading-relaxed">{errorFeedback}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="backdrop-blur-lg bg-[#161824]/60 border border-white/5 rounded-[2.5rem] p-10 space-y-12 shadow-2xl shadow-black/40">
-
-            {/* Track Selection (Same as Intelligence Page) */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 px-1">
-                <Shield className="text-blue-550" size={16} />
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
-                  Judgment Committee Profile (Market Context)
-                </label>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[
-                  { id: 'BIG_TECH', label: 'Big Tech / FAANG', desc: 'Standard Tier-1 algorithmic & scale filters.', icon: <Building2 size={20} /> },
-                  { id: 'STARTUP_ENG', label: 'Growth Startup', desc: 'Prioritizes velocity, 0-1 metrics, and generalist depth.', icon: <Zap size={20} /> },
-                  { id: 'AI_PRODUCTION', label: 'AI/ML Engineering', desc: 'Focuses on model lifecycle, RAG, and compute infra.', icon: <Cpu size={20} /> },
-                  { id: 'RESEARCH_ACADEMIC', label: 'AI Research / PhD', desc: 'Evaluates publications, core math, and theoretical novelties.', icon: <Binary size={20} /> },
-                  { id: 'FINTECH_INFRA', label: 'High-Scale Systems', desc: 'Prioritizes latency, availability, and mission-critical safety.', icon: <Fingerprint size={20} /> }
-                ].map((track) => (
-                  <button
-                    key={track.id}
-                    type="button"
-                    onClick={() => setRoleTrack(track.id as RoleTrack)}
-                    className={"flex flex-col gap-4 p-6 rounded-2xl border transition-all duration-300 text-left group hover:-translate-y-1 active:translate-y-0 " + (roleTrack === track.id ? 'bg-gradient-to-br from-blue-600/15 to-indigo-600/15 border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.18)]' : 'bg-slate-950/30 border-white/5 hover:border-white/15 hover:bg-slate-900/30')}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <div className={roleTrack === track.id ? 'text-blue-400' : 'text-slate-555 group-hover:text-slate-400'}>
-                        {track.icon}
-                      </div>
-                      {roleTrack === track.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-450 animate-pulse" />}
-                    </div>
-                    <div>
-                      <span className={"text-xs font-black uppercase tracking-widest block mb-1 " + (roleTrack === track.id ? 'text-white' : 'text-slate-400')}>{track.label}</span>
-                      <p className="text-[10px] text-slate-555 font-medium leading-relaxed">{track.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 px-1">
-                <Target size={16} className="text-blue-500" />
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
-                  Target Role Designation
-                </label>
-              </div>
-              <div className="relative group">
-                <input
-                  type="text"
-                  value={formData.role}
-                  onChange={e => setFormData({ ...formData, role: e.target.value })}
-                  placeholder="e.g. Senior Machine Learning Engineer"
-                  className="w-full bg-slate-950/40 border border-white/5 rounded-2xl p-6 text-white outline-none focus:border-blue-500/80 focus:shadow-[0_0_25px_rgba(59,130,246,0.18)] text-xl font-bold transition-all duration-300 placeholder:opacity-20 pl-14"
-                />
-                <Target size={20} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-550 transition-colors" />
-              </div>
-            </div>
-
-            <div className="pt-6 border-t border-white/5">
-              <button onClick={() => fileInputRef.current?.click()} className="w-full py-10 rounded-3xl border-2 border-dashed bg-slate-950/20 border-white/5 text-slate-500 hover:border-blue-500/50 hover:bg-blue-600/5 hover:shadow-[0_0_25px_rgba(59,130,246,0.08)] transition-all duration-300 flex flex-col items-center justify-center gap-4 group hover:-translate-y-0.5 active:translate-y-0">
-                <UploadCloud size={32} className="group-hover:text-blue-400 transition-colors duration-300" />
-                <div className="text-center">
-                  <span className="text-[11px] font-black uppercase tracking-[0.3em] block mb-1">Upload New Source</span>
-                  <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Replaces selected saved resume</p>
+          {!isPro ? (
+            <div className="w-full bg-[#161824]/60 border border-white/5 rounded-[2.5rem] p-10 md:p-14 shadow-2xl flex flex-col items-center gap-8 text-center backdrop-blur-md">
+              <div className="w-20 h-20 rounded-3xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center relative">
+                <Sparkles size={32} className="text-blue-400 animate-pulse" />
+                <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                  <Lock size={16} className="text-amber-500" />
                 </div>
-                <input type="file" ref={fileInputRef} className="hidden" onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
+              </div>
+              <div>
+                <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-4">Pro Feature Locked</h3>
+                <p className="text-slate-400 text-sm max-w-lg leading-relaxed font-medium">
+                  Resume Rebuilding is an advanced, high-fidelity AI architecting pipeline. Upgrade to **Career Pro** for unlimited deterministic resume re-architecting optimized for FAANG, startup, or fintech systems judgment tracks.
+                </p>
+              </div>
+              <button
+                onClick={onUpgrade}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black px-12 py-5 rounded-2xl uppercase tracking-widest text-xs shadow-2xl shadow-blue-500/20 hover:shadow-blue-550/40 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300"
+              >
+                Upgrade to Pro →
               </button>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Saved Resumes Selection */}
+              {recentResumes.length > 0 && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 px-1">
+                    <FileIcon className="text-blue-450" size={16} />
+                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                      Select Saved Resume Source (Last 5)
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {recentResumes.map((r) => (
+                      <button
+                        key={r.id}
+                        onClick={() => selectSavedResume(r)}
+                        className={`flex items-center gap-4 p-5 rounded-2xl border backdrop-blur-md transition-all duration-300 text-left hover:-translate-y-0.5 active:translate-y-0 ${selectedResumeId === r.id ? 'bg-gradient-to-r from-blue-600/15 to-indigo-600/15 border-blue-500/80 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-slate-950/40 border-white/5 hover:border-white/10 hover:bg-slate-900/40'}`}
+                      >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${selectedResumeId === r.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-slate-900 text-slate-550'}`}>
+                          <FileIcon size={18} />
+                        </div>
+                        <div className="flex-1 truncate">
+                          <p className="text-white font-bold text-xs truncate uppercase tracking-widest">{r.name}</p>
+                          <p className="text-slate-550 text-[9px] font-black uppercase tracking-widest mt-1">
+                            {r.versions && r.versions.length > 0 && r.versions[0] ? new Date(r.versions[0].createdAt).toLocaleDateString() : 'No date'}
+                          </p>
+                        </div>
+                        {selectedResumeId === r.id && <CheckCircle2 size={16} className="text-blue-500" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          <button
-            onClick={() => startRebuild()}
-            disabled={!resumeText || !formData.role || loading}
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-7 rounded-3xl transition-all duration-300 uppercase tracking-[0.25em] text-xs shadow-2xl shadow-blue-500/25 hover:shadow-blue-500/45 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-4 group"
-          >
-            {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} className="group-hover:rotate-12 transition-transform duration-300" /> Execute Rebuild Pipeline</>}
-          </button>
+              {errorFeedback && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-[2.5rem] p-8 mb-8 flex items-start gap-6 animate-in fade-in slide-in-from-top-4">
+                  <AlertCircle className="w-8 h-8 text-red-500 mt-1 shrink-0" />
+                  <div>
+                    <p className="text-red-400 font-black uppercase text-xs tracking-widest">Rebuild Failure</p>
+                    <p className="text-red-300/70 text-sm mt-2 font-medium leading-relaxed">{errorFeedback}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="backdrop-blur-lg bg-[#161824]/60 border border-white/5 rounded-[2.5rem] p-10 space-y-12 shadow-2xl shadow-black/40">
+
+                {/* Track Selection (Same as Intelligence Page) */}
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 px-1">
+                    <Shield className="text-blue-550" size={16} />
+                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                      Judgment Committee Profile (Market Context)
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[
+                      { id: 'BIG_TECH', label: 'Big Tech / FAANG', desc: 'Standard Tier-1 algorithmic & scale filters.', icon: <Building2 size={20} /> },
+                      { id: 'STARTUP_ENG', label: 'Growth Startup', desc: 'Prioritizes velocity, 0-1 metrics, and generalist depth.', icon: <Zap size={20} /> },
+                      { id: 'AI_PRODUCTION', label: 'AI/ML Engineering', desc: 'Focuses on model lifecycle, RAG, and compute infra.', icon: <Cpu size={20} /> },
+                      { id: 'RESEARCH_ACADEMIC', label: 'AI Research / PhD', desc: 'Evaluates publications, core math, and theoretical novelties.', icon: <Binary size={20} /> },
+                      { id: 'FINTECH_INFRA', label: 'High-Scale Systems', desc: 'Prioritizes latency, availability, and mission-critical safety.', icon: <Fingerprint size={20} /> }
+                    ].map((track) => (
+                      <button
+                        key={track.id}
+                        type="button"
+                        onClick={() => setRoleTrack(track.id as RoleTrack)}
+                        className={"flex flex-col gap-4 p-6 rounded-2xl border transition-all duration-300 text-left group hover:-translate-y-1 active:translate-y-0 " + (roleTrack === track.id ? 'bg-gradient-to-br from-blue-600/15 to-indigo-600/15 border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.18)]' : 'bg-slate-950/30 border-white/5 hover:border-white/15 hover:bg-slate-900/30')}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <div className={roleTrack === track.id ? 'text-blue-400' : 'text-slate-555 group-hover:text-slate-400'}>
+                            {track.icon}
+                          </div>
+                          {roleTrack === track.id && <div className="w-1.5 h-1.5 rounded-full bg-blue-450 animate-pulse" />}
+                        </div>
+                        <div>
+                          <span className={"text-xs font-black uppercase tracking-widest block mb-1 " + (roleTrack === track.id ? 'text-white' : 'text-slate-400')}>{track.label}</span>
+                          <p className="text-[10px] text-slate-555 font-medium leading-relaxed">{track.desc}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 px-1">
+                    <Target size={16} className="text-blue-500" />
+                    <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                      Target Role Designation
+                    </label>
+                  </div>
+                  <div className="relative group">
+                    <input
+                      type="text"
+                      value={formData.role}
+                      onChange={e => setFormData({ ...formData, role: e.target.value })}
+                      placeholder="e.g. Senior Machine Learning Engineer"
+                      className="w-full bg-slate-950/40 border border-white/5 rounded-2xl p-6 text-white outline-none focus:border-blue-500/80 focus:shadow-[0_0_25px_rgba(59,130,246,0.18)] text-xl font-bold transition-all duration-300 placeholder:opacity-20 pl-14"
+                    />
+                    <Target size={20} className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-550 transition-colors" />
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-white/5">
+                  <button onClick={() => fileInputRef.current?.click()} className="w-full py-10 rounded-3xl border-2 border-dashed bg-slate-950/20 border-white/5 text-slate-500 hover:border-blue-500/50 hover:bg-blue-600/5 hover:shadow-[0_0_25px_rgba(59,130,246,0.08)] transition-all duration-300 flex flex-col items-center justify-center gap-4 group hover:-translate-y-0.5 active:translate-y-0">
+                    <UploadCloud size={32} className="group-hover:text-blue-400 transition-colors duration-300" />
+                    <div className="text-center">
+                      <span className="text-[11px] font-black uppercase tracking-[0.3em] block mb-1">Upload New Source</span>
+                      <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Replaces selected saved resume</p>
+                    </div>
+                    <input type="file" ref={fileInputRef} className="hidden" onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => startRebuild()}
+                disabled={!resumeText || !formData.role || loading}
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-7 rounded-3xl transition-all duration-300 uppercase tracking-[0.25em] text-xs shadow-2xl shadow-blue-500/25 hover:shadow-blue-500/45 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-4 group"
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} className="group-hover:rotate-12 transition-transform duration-300" /> Execute Rebuild Pipeline</>}
+              </button>
+            </>
+          )}
         </div>
 
         <div className="lg:col-span-4 space-y-8">
