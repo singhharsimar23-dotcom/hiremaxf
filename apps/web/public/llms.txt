@@ -1,0 +1,25 @@
+# HireMax
+
+> AI-powered career intelligence platform to optimize resumes, generate cover letters, track job applications, and prepare for interviews.
+
+## Core Value Proposition
+HireMax is a comprehensive SaaS designed to maximize ATS (Applicant Tracking System) scores, rank candidates higher in recruiter searches, and provide expert AI-guided prep. It uses advanced intelligence algorithms to rebuild resumes, construct evidence-based cover letters, and provide tailored mock interview preparation based on specific job descriptions.
+
+## Product Capabilities
+1. **AI Resume Rebuild**: Complete resume analysis and rebuilding. Re-writes bullet points with high-impact metrics, action verbs, and matching keywords.
+2. **Interview Prep Kit**: Generates custom 5-tab preparation kits based on targeted job descriptions. Includes expected questions, STAR framework coaching, and pitfalls.
+3. **Cover Letter Engine**: Evidence-based cover letter generator that maps resume bullets directly to targeted job requirements with zero generic filler text.
+4. **Application Tracker**: Kanban pipeline management tool with automated reminders and draft follow-up templates.
+5. **LinkedIn Optimizer**: Recruiter search simulator that ranks profile keywords against recruiter Boolean queries.
+6. **Market Intelligence**: Provides real-time salary bands, hiring velocities, and skill trends.
+
+## Pricing & Plans
+- **Starter Plan ($0)**: Includes basic resume diagnostics and limited AI cover letter generation.
+- **Pro Plan ($29/mo)**: Unlocks full AI Resume Rebuild, custom Interview Prep Kits, complete Cover Letter Engine, and LinkedIn Optimizer.
+- **Elite Plan ($49/mo)**: High-frequency processing, priority support, and multi-profile tracking.
+- **6-Month Bundle ($119)**: Complete access to all Pro features for 6 months (best value).
+
+## Contact & Links
+- Website: https://www.hiremax.site
+- Community Instagram: https://www.instagram.com/hiremax.ai/
+- Support: hiremax.ai@gmail.com
