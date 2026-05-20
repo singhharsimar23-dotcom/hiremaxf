@@ -731,7 +731,7 @@ function App() {
 
         bypassWarningRef.current = false; // Reset after bypass
 
-        const eliteRequired = ['career-intelligence', 'transformation-factory', 'applications'];
+        const eliteRequired = ['career-intelligence', 'transformation-factory', 'applications', 'interview-prep'];
         if (eliteRequired.indexOf(targetView) !== -1 && !isElite) {
             setTeaserTarget(targetView);
             setView('dashboard');

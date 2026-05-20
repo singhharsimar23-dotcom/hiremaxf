@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
   )
 
   try {
-    const gateResult = await checkPlanGate(req, ['Career Pro', 'Career Elite', 'Automation'])
+    const gateResult = await checkPlanGate(req, ['Career Elite', 'Automation'])
     if (gateResult instanceof Response) return gateResult
     const { user } = gateResult
 

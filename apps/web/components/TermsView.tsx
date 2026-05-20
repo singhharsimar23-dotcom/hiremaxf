@@ -45,7 +45,7 @@ export const TermsView: React.FC<TermsViewProps> = ({ setView }) => {
 
           <section>
             <h2 className="text-white font-black text-xl mb-3">4. User Accounts</h2>
-            <p>You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You agree to notify us immediately at <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a> of any unauthorized use of your account. HireMax reserves the right to terminate accounts that violate these Terms.</p>
+            <p>You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You agree to notify us immediately at <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a> of any unauthorized use of your account. HireMax reserves the right to terminate accounts that violate these Terms.</p>
           </section>
 
           <section>
@@ -97,7 +97,7 @@ export const TermsView: React.FC<TermsViewProps> = ({ setView }) => {
 
           <section>
             <h2 className="text-white font-black text-xl mb-3">13. Contact</h2>
-            <p>For questions about these Terms, contact us at: <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a></p>
+            <p>For questions about these Terms, contact us at: <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a></p>
           </section>
 
         </div>

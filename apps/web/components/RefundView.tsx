@@ -49,7 +49,7 @@ export const RefundView: React.FC<RefundViewProps> = ({ setView }) => {
           <section>
             <h2 className="text-white font-black text-xl mb-3">2. Technical Error Exception</h2>
             <p>If you experience a verifiable technical error — such as your AI report failing to generate, a critical platform malfunction preventing access to purchased features, or a duplicate billing error — you may contact our support team within <strong className="text-white">7 days</strong> of the transaction date.</p>
-            <p className="mt-3">Please contact us at: <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a></p>
+            <p className="mt-3">Please contact us at: <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a></p>
             <p className="mt-3">Include in your message:</p>
             <ul className="list-disc ml-6 mt-3 space-y-2 text-slate-300">
               <li>Your account email address</li>
@@ -72,7 +72,7 @@ export const RefundView: React.FC<RefundViewProps> = ({ setView }) => {
 
           <section>
             <h2 className="text-white font-black text-xl mb-3">4. Chargebacks & Disputes</h2>
-            <p>If you initiate a chargeback with your bank or payment provider without first contacting HireMax support, we reserve the right to permanently suspend your account. We strongly encourage you to contact us first at <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a> — we are committed to resolving legitimate issues quickly and fairly.</p>
+            <p>If you initiate a chargeback with your bank or payment provider without first contacting HireMax support, we reserve the right to permanently suspend your account. We strongly encourage you to contact us first at <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a> — we are committed to resolving legitimate issues quickly and fairly.</p>
           </section>
 
           <section>
@@ -82,7 +82,7 @@ export const RefundView: React.FC<RefundViewProps> = ({ setView }) => {
 
           <section>
             <h2 className="text-white font-black text-xl mb-3">6. Contact for Refund Requests</h2>
-            <p>All refund-related inquiries must be submitted via email to: <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a></p>
+            <p>All refund-related inquiries must be submitted via email to: <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a></p>
             <p className="mt-2">Response time: within 1–2 business days. We aim to resolve all legitimate concerns quickly and professionally.</p>
           </section>
 

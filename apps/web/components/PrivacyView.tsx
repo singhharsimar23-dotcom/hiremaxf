@@ -88,7 +88,7 @@ export const PrivacyView: React.FC<PrivacyViewProps> = ({ setView }) => {
               <li><strong className="text-white">Portability:</strong> You may request an export of your resume data and analysis history</li>
               <li><strong className="text-white">Opt-out:</strong> You may opt out of non-essential communications at any time</li>
             </ul>
-            <p className="mt-4">To exercise any of these rights, contact us at: <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a></p>
+            <p className="mt-4">To exercise any of these rights, contact us at: <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a></p>
           </section>
 
           <section>
@@ -103,7 +103,7 @@ export const PrivacyView: React.FC<PrivacyViewProps> = ({ setView }) => {
 
           <section>
             <h2 className="text-white font-black text-xl mb-3">9. Children's Privacy</h2>
-            <p>HireMax is not directed at children under 16 years of age. We do not knowingly collect personal data from children. If you believe a minor has provided us with personal data, contact us immediately at <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a>.</p>
+            <p>HireMax is not directed at children under 16 years of age. We do not knowingly collect personal data from children. If you believe a minor has provided us with personal data, contact us immediately at <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a>.</p>
           </section>
 
           <section>
@@ -114,7 +114,7 @@ export const PrivacyView: React.FC<PrivacyViewProps> = ({ setView }) => {
           <section>
             <h2 className="text-white font-black text-xl mb-3">11. Contact Us</h2>
             <p>For any privacy-related questions, data requests, or concerns, please contact our privacy team at:</p>
-            <p className="mt-2"><a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline font-bold">support@hiremax.ai</a></p>
+            <p className="mt-2"><a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline font-bold">hiremax.ai@gmail.com</a></p>
             <p className="mt-1 text-slate-400">We aim to respond to all privacy inquiries within 2 business days.</p>
           </section>
 

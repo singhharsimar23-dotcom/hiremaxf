@@ -56,7 +56,8 @@ const NavLink: React.FC<{
   icon?: React.ReactNode;
   isLocked?: boolean;
   targetView?: string;
-}> = ({ label, active, onClick, icon, isLocked, targetView }) => {
+  isFlagship?: boolean;
+}> = ({ label, active, onClick, icon, isLocked, targetView, isFlagship }) => {
   const handlePrefetch = () => {
     const fn = PREFETCH_MAP[targetView ?? ''];
     if (fn) {
@@ -70,20 +71,24 @@ const NavLink: React.FC<{
       onMouseEnter={handlePrefetch}
       onFocus={handlePrefetch}
       onTouchStart={handlePrefetch} // fires ~100ms before tap resolves on mobile
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 font-bold text-sm whitespace-nowrap relative group ${active
-        ? 'text-white bg-white/5'
-        : 'text-slate-400 hover:text-white hover:bg-white/5'
-        }`}
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 font-bold text-sm whitespace-nowrap relative group ${
+        active
+          ? 'text-white bg-white/5'
+          : isFlagship
+          ? 'text-slate-200 hover:text-white bg-white/[0.02] border border-white/5 shadow-[0_0_12px_rgba(255,255,255,0.02)]'
+          : 'text-slate-400 hover:text-white hover:bg-white/5'
+      }`}
     >
       <div className="relative shrink-0">
         {icon}
-        {isLocked && (
-          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-[#0F1117] border border-amber-500/40 flex items-center justify-center shadow-lg">
-            <Lock size={7} className="text-amber-500 fill-amber-500/10" />
-          </div>
-        )}
       </div>
-      {label}
+      <span>{label}</span>
+      {isFlagship && (
+        <span className="relative flex h-1.5 w-1.5 ml-0.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+        </span>
+      )}
     </button>
   );
 };
@@ -178,18 +183,20 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             label="Rebuild"
             active={currentView === 'rebuild-standalone'}
             onClick={() => setView('rebuild-standalone')}
-            icon={<Sparkles size={18} className={`opacity-70 ${isPro ? 'text-blue-500' : 'text-slate-600'}`} />}
+            icon={<Sparkles size={18} className={`opacity-80 transition-all ${isPro ? 'text-blue-500' : 'text-blue-400/90 animate-pulse'}`} />}
             isLocked={!isPro}
             targetView="rebuild-standalone"
+            isFlagship
           />
 
           <NavLink
             label="Interview Prep"
             active={currentView === 'interview-prep'}
             onClick={() => setView('interview-prep')}
-            icon={<MessageSquare size={18} className={`opacity-70 ${isPro ? 'text-violet-400' : 'text-slate-600'}`} />}
-            isLocked={!isPro}
+            icon={<MessageSquare size={18} className={`opacity-80 transition-all ${isElite ? 'text-violet-400' : 'text-violet-400/90 animate-pulse'}`} />}
+            isLocked={!isElite}
             targetView="interview-prep"
+            isFlagship
           />
 
           <NavLink
@@ -332,8 +339,8 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
               <div className="h-[1px] bg-white/5 my-2" />
               <NavLink label="Intelligence" active={currentView === 'full-review'} onClick={() => { setView('full-review'); setMobileMenuOpen(false); }} icon={<ShieldCheck size={18} />} isLocked={!isPro} targetView="full-review" />
               <NavLink label="Market Insights" active={currentView === 'career-intelligence'} onClick={() => { setView('career-intelligence'); setMobileMenuOpen(false); }} icon={<TrendingUp size={18} />} isLocked={!isElite} targetView="career-intelligence" />
-              <NavLink label="Rebuild" active={currentView === 'rebuild-standalone'} onClick={() => { setView('rebuild-standalone'); setMobileMenuOpen(false); }} icon={<Sparkles size={18} />} isLocked={!isPro} targetView="rebuild-standalone" />
-              <NavLink label="Interview Prep" active={currentView === 'interview-prep'} onClick={() => { setView('interview-prep'); setMobileMenuOpen(false); }} icon={<MessageSquare size={18} />} isLocked={!isPro} targetView="interview-prep" />
+              <NavLink label="Rebuild" active={currentView === 'rebuild-standalone'} onClick={() => { setView('rebuild-standalone'); setMobileMenuOpen(false); }} icon={<Sparkles size={18} className={isPro ? 'text-blue-500' : 'text-blue-400/90 animate-pulse'} />} isLocked={!isPro} targetView="rebuild-standalone" isFlagship />
+              <NavLink label="Interview Prep" active={currentView === 'interview-prep'} onClick={() => { setView('interview-prep'); setMobileMenuOpen(false); }} icon={<MessageSquare size={18} className={isElite ? 'text-violet-400' : 'text-violet-400/90 animate-pulse'} />} isLocked={!isElite} targetView="interview-prep" isFlagship />
               <NavLink label="Cover Letter" active={currentView === 'cover-letter'} onClick={() => { setView('cover-letter'); setMobileMenuOpen(false); }} icon={<FileSearch size={18} />} isLocked={!isPro} targetView="cover-letter" />
               <NavLink label="Tracker" active={currentView === 'tracker'} onClick={() => { setView('tracker'); setMobileMenuOpen(false); }} icon={<Briefcase size={18} />} targetView="tracker" />
               <NavLink label="LinkedIn" active={currentView === 'linkedin-optimizer'} onClick={() => { setView('linkedin-optimizer'); setMobileMenuOpen(false); }} icon={<Activity size={18} />} isLocked={!isPro} targetView="linkedin-optimizer" />

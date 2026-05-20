@@ -70,6 +70,18 @@ export const FeatureTeaser: React.FC<FeatureTeaserProps> = ({ targetView, onUpgr
         { t: "Clean Exports", d: "High-fidelity PDF assets for professional applications.", icon: Layout }
       ],
       color: "from-blue-500/10 to-transparent"
+    },
+    'interview-prep': {
+      title: "Interview Prep",
+      tag: "Interactive Coach",
+      icon: <Sparkles size={40} className="text-violet-400" />,
+      description: "Generate highly tailored behavioral & technical interview prep kits designed specifically for your active resume and target role. Practice with real-time feedback.",
+      highlights: [
+        { t: "Tailored Behavioral Kits", d: "Practice real questions mapped directly to your project history.", icon: Target },
+        { t: "Live Model Blueprints", d: "Review response frameworks generated precisely for your background.", icon: Sparkles },
+        { t: "STAR Framework Alignment", d: "Instantly calibrate your talking points to fit target job requirements.", icon: ShieldCheck }
+      ],
+      color: "from-violet-500/10 to-transparent"
     }
   }[targetView as string] || {
     title: "Premium Feature",

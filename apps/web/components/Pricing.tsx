@@ -248,10 +248,9 @@ export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan,
       label: 'Career Pro',
       price: '$29',
       subLabel: 'per month',
-      valueStatement: 'Fix your resume and ace the interview.',
+      valueStatement: 'Fix your resume and tailor cover letters.',
       bullets: [
         'Unlimited AI Resume Rebuilds',
-        'Custom Interview Prep Kits',
         'Evidence-traced Cover Letters',
         'Clean exports (no watermark)',
         'Role-specific improvements'
@@ -266,6 +265,7 @@ export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan,
       valueStatement: 'The complete Career OS to land offers faster.',
       bullets: [
         'Everything in Pro',
+        'Custom Interview Prep Kits',
         'LinkedIn Optimizer (Boolean search rank)',
         'Market Intelligence (Salary & Trends)',
         'AI Follow-up Emails in Tracker',
@@ -302,6 +302,7 @@ export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan,
         ];
       case 'Career Pro':
         return [
+          'Custom Interview Prep Kits',
           'Hiring signals before roles go public',
           'Role saturation & timing guidance',
           'Market Outlook intelligence'
@@ -409,7 +410,7 @@ export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan,
           </p>
         </div>
         <p className="text-slate-400 text-[11px] font-medium text-center sm:text-right">
-          Questions? <a href="mailto:support@hiremax.ai" className="text-blue-400 hover:text-blue-300 underline">support@hiremax.ai</a>
+          Questions? <a href="mailto:hiremax.ai@gmail.com" className="text-blue-400 hover:text-blue-300 underline">hiremax.ai@gmail.com</a>
         </p>
       </div>
 

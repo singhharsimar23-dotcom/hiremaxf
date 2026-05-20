@@ -37,7 +37,7 @@ export const FAQ: React.FC<FAQProps> = ({ setView }) => {
     },
     {
       q: "Is this a subscription or one-time payment?",
-      a: "HireMax offers monthly subscriptions. Career Pro ($29/mo) gives you unlimited resume analyses, market intelligence, and the application tracker. Elite ($49/mo) adds priority processing, advanced interview prep, and dedicated support. You can cancel anytime from your billing page."
+      a: "HireMax offers monthly subscriptions. Career Pro ($29/mo) gives you unlimited resume analyses, ATS scoring, full resume rebuilds, and the application tracker. Elite ($49/mo) adds advanced interview prep, priority processing, market outlook intelligence, and dedicated support. You can cancel anytime from your billing page."
     },
     {
       q: "How many resumes can I optimize?",

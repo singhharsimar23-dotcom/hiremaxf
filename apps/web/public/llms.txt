@@ -15,9 +15,9 @@ HireMax is a comprehensive SaaS designed to maximize ATS (Applicant Tracking Sys
 
 ## Pricing & Plans
 - **Starter Plan ($0)**: Includes basic resume diagnostics and limited AI cover letter generation.
-- **Pro Plan ($29/mo)**: Unlocks full AI Resume Rebuild, custom Interview Prep Kits, complete Cover Letter Engine, and LinkedIn Optimizer.
-- **Elite Plan ($49/mo)**: High-frequency processing, priority support, and multi-profile tracking.
-- **6-Month Bundle ($119)**: Complete access to all Pro features for 6 months (best value).
+- **Pro Plan ($29/mo)**: Unlocks full AI Resume Rebuild, complete Cover Letter Engine, and LinkedIn Optimizer.
+- **Elite Plan ($49/mo)**: Custom Interview Prep Kits, Market Intelligence, priority processing, and dedicated support.
+- **6-Month Bundle ($149)**: Complete access to all Career Elite features for 6 months (best value).
 
 ## Contact & Links
 - Website: https://www.hiremax.site

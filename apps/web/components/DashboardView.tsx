@@ -62,6 +62,7 @@ const UPSELL_CONTEXT: Record<string, { tool: string; benefit: string; time: stri
 
 export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNavigate, user, history = [] }) => {
   const isPro = plan !== 'Starter';
+  const isElite = plan === 'Career Elite' || plan === 'Automation';
   const [greeting, setGreeting] = useState('');
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [apps, setApps] = useState<any[]>([]);
@@ -151,12 +152,84 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
 
   const TOOLS = [
     { label: 'AI Rebuild', desc: 'Rewrite your resume to FAANG standard', view: 'rebuild-standalone' as AppView, icon: Sparkles, color: 'from-blue-600/20 to-blue-900/5', border: 'border-blue-500/20', iconColor: 'text-blue-400', locked: !isPro },
-    { label: 'Interview Prep', desc: '5-tab kit built from your JD', view: 'interview-prep' as AppView, icon: ShieldCheck, color: 'from-violet-600/20 to-violet-900/5', border: 'border-violet-500/20', iconColor: 'text-violet-400', locked: !isPro },
+    { label: 'Interview Prep', desc: '5-tab kit built from your JD', view: 'interview-prep' as AppView, icon: ShieldCheck, color: 'from-violet-600/20 to-violet-900/5', border: 'border-violet-500/20', iconColor: 'text-violet-400', locked: !isElite },
     { label: 'Cover Letter', desc: 'Evidence-traced, never generic', view: 'cover-letter' as AppView, icon: FileText, color: 'from-emerald-600/20 to-emerald-900/5', border: 'border-emerald-500/20', iconColor: 'text-emerald-400', locked: false },
     { label: 'Job Tracker', desc: 'Kanban pipeline + follow-up AI', view: 'tracker' as AppView, icon: Briefcase, color: 'from-amber-600/20 to-amber-900/5', border: 'border-amber-500/20', iconColor: 'text-amber-400', locked: false },
     { label: 'LinkedIn Optimizer', desc: 'Rank in recruiter Boolean searches', view: 'linkedin-optimizer' as AppView, icon: Linkedin, color: 'from-sky-600/20 to-sky-900/5', border: 'border-sky-500/20', iconColor: 'text-sky-400', locked: !isPro },
-    { label: 'Market Insights', desc: 'Real-time salary & hiring trends', view: 'career-intelligence' as AppView, icon: TrendingUp, color: 'from-indigo-600/20 to-indigo-900/5', border: 'border-indigo-500/20', iconColor: 'text-indigo-400', locked: true },
+    { label: 'Market Insights', desc: 'Real-time salary & hiring trends', view: 'career-intelligence' as AppView, icon: TrendingUp, color: 'from-indigo-600/20 to-indigo-900/5', border: 'border-indigo-500/20', iconColor: 'text-indigo-400', locked: !isElite },
   ];
+
+  if (!currentAnalysis) {
+    return (
+      <div className="max-w-5xl mx-auto px-6 py-12 md:py-20 animate-in fade-in duration-700">
+        <div className="relative bg-[#111118] border border-white/5 rounded-[2.5rem] p-8 md:p-16 overflow-hidden shadow-2xl">
+          {/* Decorative glowing background gradients */}
+          <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
+          
+          <div className="relative z-10 max-w-3xl mx-auto text-center space-y-8">
+            <div className="inline-flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Dashboard Deactivated</span>
+            </div>
+
+            <div className="space-y-4">
+              <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight leading-tight uppercase">
+                Your Resume is an <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400">Unknown Risk</span>
+              </h1>
+              <p className="text-slate-400 text-base md:text-lg max-w-2xl mx-auto font-medium leading-relaxed">
+                Applying with an uncalibrated resume is sending your career into a black hole. 
+                <span className="text-white font-bold"> 75% of resumes are auto-rejected</span> by ATS screening software before a human ever sees them.
+              </p>
+            </div>
+
+            {/* Pain point grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto text-left pt-4">
+              <div className="bg-[#0A0A0F]/60 border border-white/5 rounded-2xl p-5 flex items-start gap-4">
+                <div className="w-8 h-8 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0 border border-red-500/20">
+                  <AlertTriangle className="text-red-400" size={16} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-sm mb-1">ATS Auto-Filters</h3>
+                  <p className="text-slate-500 text-xs">If you lack the exact semantic keywords the recruiter input, your application is discarded instantly.</p>
+                </div>
+              </div>
+              
+              <div className="bg-[#0A0A0F]/60 border border-white/5 rounded-2xl p-5 flex items-start gap-4">
+                <div className="w-8 h-8 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0 border border-red-500/20">
+                  <Clock className="text-red-400" size={16} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-sm mb-1">The 6-Second Scan</h3>
+                  <p className="text-slate-500 text-xs">If your document fails to demonstrate achievement density instantly, a recruiter skips to the next candidate.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Ingestion Area */}
+            <div className="bg-[#0A0A0F] border border-white/10 rounded-[2rem] p-8 md:p-10 max-w-xl mx-auto shadow-inner space-y-6">
+              <div className="space-y-2">
+                <p className="text-white font-black text-lg uppercase tracking-tight">Run Your Free ATS Diagnostic Check</p>
+                <p className="text-slate-400 text-xs font-semibold">Get a detailed evaluation score, failure map, and step-by-step optimization recommendations.</p>
+              </div>
+
+              <button
+                onClick={() => onNavigate('ai-review')}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 px-8 rounded-2xl transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-3 shadow-lg shadow-blue-900/30 group"
+              >
+                Upload Resume & Initialize <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+              </button>
+
+              <div className="flex justify-center items-center gap-8 text-[10px] text-slate-500 font-bold uppercase tracking-wider pt-2 border-t border-white/5">
+                <span className="flex items-center gap-1.5"><Check size={12} className="text-green-500" /> Takes 60 seconds</span>
+                <span className="flex items-center gap-1.5"><Check size={12} className="text-green-500" /> 100% Free Audit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto px-8 py-10 animate-in fade-in duration-500">
@@ -387,75 +460,18 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
               </div>
               <p className="text-white font-black text-base mb-1">{tool.label}</p>
               <p className="text-slate-400 text-sm">{tool.desc}</p>
-              {tool.locked && <div className="absolute top-4 right-4 bg-amber-500/20 border border-amber-500/30 rounded-lg px-2 py-1"><p className="text-xs font-bold text-amber-400">Pro</p></div>}
+              {tool.locked && (
+                <div className="absolute top-4 right-4 bg-amber-500/20 border border-amber-500/30 rounded-lg px-2 py-1">
+                  <p className="text-xs font-bold text-amber-400">
+                    {tool.view === 'interview-prep' || tool.view === 'career-intelligence' ? 'Elite' : 'Pro'}
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-1 mt-4"><p className="text-xs font-semibold text-slate-500 group-hover:text-slate-300 transition-colors">Open</p><ArrowRight size={12} className="text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition-all"/></div>
             </button>
           );
         })}
       </div>
-
-      {/* Upload CTA if no resume */}
-      {!currentAnalysis && (
-        <div className="mt-8 bg-[#0D0D12] border border-white/10 rounded-[2rem] overflow-hidden">
-          {/* Urgency header */}
-          <div className="bg-gradient-to-r from-red-900/20 to-amber-900/10 border-b border-white/5 px-8 py-4 flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <p className="text-red-400 font-black text-xs uppercase tracking-widest">
-              Action Required: Your Resume Status is Unknown
-            </p>
-          </div>
-          
-          <div className="p-10 grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
-            {/* What they don't know */}
-            <div className="space-y-4">
-              <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Right now, you don't know:</p>
-              {[
-                'If your resume survives ATS auto-rejection',
-                'Which 3 lines are costing you callbacks',
-                'If your seniority signals match your target level',
-                'Why LinkedIn recruiters can\'t find you'
-              ].map((item, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0" />
-                  <p className="text-slate-500 text-sm">{item}</p>
-                </div>
-              ))}
-            </div>
-            
-            {/* The action */}
-            <div className="text-center">
-              <div className="w-20 h-20 rounded-3xl bg-blue-500/20 flex items-center justify-center mx-auto mb-4">
-                <Sparkles size={32} className="text-blue-400" />
-              </div>
-              <p className="text-slate-500 text-sm mb-2">Upload your resume to find out</p>
-              <p className="text-blue-400 font-black text-3xl mb-4">FREE</p>
-              <button
-                onClick={() => onNavigate('ai-review')}
-                className="bg-white text-black font-black px-8 py-4 rounded-2xl w-full hover:bg-blue-50 transition-all uppercase tracking-widest text-xs"
-              >
-                Get My Free Diagnosis →
-              </button>
-              <p className="text-slate-600 text-[10px] mt-3">Under 2 minutes · No credit card</p>
-            </div>
-            
-            {/* What they'll learn */}
-            <div className="space-y-4">
-              <p className="text-slate-400 text-xs font-black uppercase tracking-widest">After your diagnosis:</p>
-              {[
-                'ATS Survivability Score (0-100)',
-                'Exact lines causing auto-rejection',
-                'Seniority signal vs. target level',
-                '8-point failure map with fixes'
-              ].map((item, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 shrink-0" />
-                  <p className="text-slate-400 text-sm">{item}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Bottom sheet UI */}
       {upsellContext && (
@@ -475,7 +491,7 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
               onClick={() => { setUpsellContext(null); onNavigate('pricing'); }}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black py-4 rounded-2xl uppercase tracking-widest text-xs"
             >
-              Unlock for $24/mo — Start Today →
+              Unlock Access — Start Today →
             </button>
             <p className="text-slate-600 text-[10px] text-center mt-3">7-day guarantee · Cancel anytime</p>
           </div>

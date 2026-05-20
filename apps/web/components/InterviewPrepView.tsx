@@ -654,7 +654,7 @@ Do not return any markdown wrappers, just the raw JSON.`
 };
 
 export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgrade, setView, dispatchJob, activeJobs }) => {
-  const isPro = plan !== 'Starter';
+  const isElite = plan === 'Career Elite' || plan === 'Automation';
   const [tab, setTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadMsg, setLoadMsg] = useState('');
@@ -862,7 +862,7 @@ export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgr
   }, [loading]);
 
   const generate = async () => {
-    if (!isPro) { onUpgrade(); return; }
+    if (!isElite) { onUpgrade(); return; }
     if (!form.jobDescription.trim()) { setError('Paste a job description to continue.'); return; }
     setLoading(true); setError('');
     const msgs = ['Generating Prep Kit…', 'Building from your resume…', 'Calibrating for company stage…'];
@@ -913,12 +913,12 @@ export const InterviewPrepView: React.FC<Props> = ({ plan, history, user, onUpgr
     w.document.close();
   };
 
-  if (!isPro) return (
+  if (!isElite) return (
     <div className="max-w-[700px] mx-auto py-24 px-8 flex flex-col items-center gap-6 text-center">
       <div className="w-20 h-20 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center"><Lock size={32} className="text-amber-500" /></div>
-      <h2 className="text-4xl font-black text-white uppercase tracking-tighter">Pro Feature</h2>
-      <p className="text-slate-400 max-w-md">Interview Prep builds personalized answers from YOUR resume — not generic templates. Pre-fills STAR with your actual bullets. Available on Career Pro+.</p>
-      <button onClick={onUpgrade} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black px-10 py-4 rounded-2xl uppercase tracking-widest text-sm shadow-xl shadow-blue-500/20 hover:opacity-90 transition-all">Upgrade to Pro →</button>
+      <h2 className="text-4xl font-black text-white uppercase tracking-tighter">Elite Feature</h2>
+      <p className="text-slate-400 max-w-md">Interview Prep builds personalized answers from YOUR resume — not generic templates. Pre-fills STAR with your actual bullets. Available on Career Elite.</p>
+      <button onClick={onUpgrade} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black px-10 py-4 rounded-2xl uppercase tracking-widest text-sm shadow-xl shadow-blue-500/20 hover:opacity-90 transition-all">Upgrade to Elite →</button>
     </div>
   );
 
