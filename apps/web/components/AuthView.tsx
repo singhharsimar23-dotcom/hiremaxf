@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, Loader2, AlertCircle, Chrome, Linkedin, Github, Mail, Lock, Eye, EyeOff, ChevronLeft, CheckCircle2, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { verifyEmailDomainMX } from '../lib/emailValidator';
 
 interface Props { onSuccess: () => void; }
 type Mode = 'LOGIN' | 'SIGNUP' | 'RECOVER';
@@ -46,6 +47,12 @@ const AuthView: React.FC<Props> = ({ onSuccess }) => {
         if (error) throw error;
         onSuccess();
       } else if (mode === 'SIGNUP') {
+        const validation = await verifyEmailDomainMX(email);
+        if (!validation.valid) {
+          setError(validation.reason || 'Invalid email address.');
+          setLoading(false);
+          return;
+        }
         const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName, plan: 'Starter' } } });
         if (error) throw error;
         setSuccess('Check your email to confirm your account, then come back to sign in.');

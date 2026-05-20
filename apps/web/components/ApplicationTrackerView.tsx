@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, Loader2, Mail, Copy, Check, BarChart2, Star, ExternalLink, Zap, TrendingUp, AlertTriangle, ChevronRight, Trash2, Calendar, Briefcase, Command, LayoutGrid, List as ListIcon, Search, Building2, MapPin, DollarSign, Clock, ArrowRight, Eye, UserX, Inbox, Sparkles } from 'lucide-react';
+import { Plus, X, Loader2, Mail, Copy, Check, BarChart2, Star, ExternalLink, Zap, TrendingUp, AlertTriangle, ChevronRight, Trash2, Calendar, Briefcase, Command, LayoutGrid, List as ListIcon, Search, Building2, MapPin, DollarSign, Clock, ArrowRight, Eye, UserX, Inbox, Sparkles, Activity } from 'lucide-react';
 import { ResumeGroup, UserPlan } from '../types';
 import { supabase } from '../lib/supabase';
+import { getCached, setCached, invalidate } from '../lib/queryCache';
+
+const CACHE_KEY = 'tracker_apps';
 
 async function generateViaEdge(prompt: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('generate-text', { body: { prompt } });
@@ -21,11 +24,11 @@ interface JobApp {
 }
 
 const COLS = [
-  { key: 'saved',        label: 'Wishlist',     dot: 'bg-slate-400',  border: 'border-slate-700/50' },
-  { key: 'applied',      label: 'Applied',      dot: 'bg-blue-400',   border: 'border-blue-500/30' },
-  { key: 'interviewing', label: 'Interviewing', dot: 'bg-amber-400',  border: 'border-amber-500/30' },
-  { key: 'offer',        label: 'Offer',        dot: 'bg-green-400',  border: 'border-green-500/30' },
-  { key: 'closed',       label: 'Rejected',     dot: 'bg-red-500',    border: 'border-red-500/30' },
+  { key: 'saved', label: 'Wishlist', dot: 'bg-slate-400', border: 'border-slate-700/50' },
+  { key: 'applied', label: 'Applied', dot: 'bg-blue-400', border: 'border-blue-500/30' },
+  { key: 'interviewing', label: 'Interviewing', dot: 'bg-amber-400', border: 'border-amber-500/30' },
+  { key: 'offer', label: 'Offer', dot: 'bg-green-400', border: 'border-green-500/30' },
+  { key: 'closed', label: 'Rejected', dot: 'bg-red-500', border: 'border-red-500/30' },
 ];
 
 const SRC_COLOR: Record<string, string> = {
@@ -58,7 +61,9 @@ const EMPTY_FORM: AddForm = { company: '', role: '', source: 'LinkedIn', job_url
 export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
   const [apps, setApps] = useState<JobApp[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewType, setViewType] = useState<'pipeline' | 'list'>('pipeline');
+  const [viewType, setViewType] = useState<'pipeline' | 'list'>(
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'pipeline'
+  );
 
   const [drawerApp, setDrawerApp] = useState<JobApp | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -77,6 +82,26 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
 
   const [notes, setNotes] = useState('');
   const notesTimer = useRef<any>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (notesTimer.current) clearTimeout(notesTimer.current);
+    };
+  }, []);
+
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+  }, []);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Command Palette Listener
   useEffect(() => {
@@ -100,25 +125,75 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
       setLoading(false);
       return;
     }
+    const cached = getCached<JobApp[]>(CACHE_KEY);
+    if (cached) {
+      setApps(cached);
+      setLoading(false);
+    }
     try {
       const { data, error } = await supabase.from('job_applications').select('*').eq('user_id', user.id).order('applied_at', { ascending: false });
       if (error) throw error;
-      if (data) setApps(data);
-    } catch (e) {
+      if (data) {
+        setApps(data);
+        setCached(CACHE_KEY, data);
+      }
+    } catch (e: any) {
       console.error("Failed to load applications:", e);
+      showToast(e.message || "Failed to load applications", "error");
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, showToast]);
 
   useEffect(() => {
-    load();
+    let isMounted = true;
+
+    const safeLoad = async () => {
+      if (!isMounted || !user) { setLoading(false); return; }
+      const cached = getCached<JobApp[]>(CACHE_KEY);
+      if (cached) {
+        if (isMounted) {
+          setApps(cached);
+          setLoading(false);
+        }
+      }
+      try {
+        const { data, error } = await supabase
+          .from('job_applications')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('applied_at', { ascending: false });
+        if (error) throw error;
+        if (isMounted && data) {
+          setApps(data);
+          setCached(CACHE_KEY, data);
+        }
+      } catch (e) {
+        console.error('Failed to load applications:', e);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    safeLoad();
+
     if (!user) return;
-    const ch = supabase.channel(`tracker_${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_applications', filter: `user_id=eq.${user.id}` }, load)
+
+    const ch = supabase
+      .channel(`tracker_${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'job_applications',
+        filter: `user_id=eq.${user.id}`,
+      }, () => { if (isMounted) safeLoad(); })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [user, load]);
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(ch);
+    };
+  }, [user?.id]); // depend on user.id not user object reference
 
   useEffect(() => {
     if (drawerApp) setDrawerApp(apps.find(a => a.id === drawerApp.id) || null);
@@ -128,12 +203,24 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
     if (!addForm.company || !addForm.role) return;
     setCmdKSaving(true);
     const fu = new Date(); fu.setDate(fu.getDate() + 7);
-    await supabase.from('job_applications').insert({
-      company_name: addForm.company, role_title: addForm.role, user_id: user.id,
-      status: addForm.status, source: addForm.source,
-      applied_at: new Date().toISOString(), last_activity_at: new Date().toISOString(), follow_up_due_at: fu.toISOString()
-    });
-    setAddForm(EMPTY_FORM); setCmdKSaving(false); setCmdKOpen(false); load();
+    try {
+      const { error } = await supabase.from('job_applications').insert({
+        company_name: addForm.company, role_title: addForm.role, user_id: user.id,
+        status: addForm.status, source: addForm.source,
+        applied_at: new Date().toISOString(), last_activity_at: new Date().toISOString(), follow_up_due_at: fu.toISOString()
+      });
+      if (error) throw error;
+      invalidate(CACHE_KEY);
+      showToast(`Added application for ${addForm.company}`);
+      setAddForm(EMPTY_FORM);
+      setCmdKOpen(false);
+      load();
+    } catch (e: any) {
+      console.error("Failed to add application manually:", e);
+      showToast(e.message || "Failed to add application", "error");
+    } finally {
+      setCmdKSaving(false);
+    }
   };
 
   const execSmartAdd = async () => {
@@ -147,41 +234,81 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
       try {
         const cleaned = txt.replace(/```json/g, '').replace(/```/g, '') || '{}';
         parsed = JSON.parse(cleaned);
-      } catch (err) {}
-      
+      } catch (err) { }
+
       const fu = new Date(); fu.setDate(fu.getDate() + 7);
-      await supabase.from('job_applications').insert({
+      const { error } = await supabase.from('job_applications').insert({
         company_name: parsed.company || 'Unknown', role_title: parsed.role || 'Unknown', user_id: user.id,
         status: 'applied', source: parsed.source || 'Other',
         applied_at: new Date().toISOString(), last_activity_at: new Date().toISOString(), follow_up_due_at: fu.toISOString()
       });
+      if (error) throw error;
+      invalidate(CACHE_KEY);
+      showToast(`AI added application for ${parsed.company}`);
       setCmdKInput(''); setCmdKOpen(false); load();
-    } catch(e) {
+    } catch (e: any) {
       console.error("Smart add failed", e);
+      showToast(e.message || "Smart Add failed", "error");
+    } finally {
+      setCmdKSaving(false);
     }
-    setCmdKSaving(false);
   };
 
   const move = async (id: string, status: string) => {
-    await supabase.from('job_applications').update({ status, last_activity_at: new Date().toISOString() }).eq('id', id);
-    setApps(p => p.map(a => a.id === id ? { ...a, status } : a));
+    try {
+      const { error } = await supabase.from('job_applications').update({ status, last_activity_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
+      invalidate(CACHE_KEY);
+      setApps(p => p.map(a => a.id === id ? { ...a, status } : a));
+      const movedApp = apps.find(a => a.id === id);
+      showToast(`Moved ${movedApp?.company_name || 'application'} to ${status}`);
+    } catch (e: any) {
+      console.error("Failed to move status:", e);
+      showToast(e.message || "Failed to update status", "error");
+      load();
+    }
   };
 
   const autoSaveNotes = (id: string, val: string) => {
     setNotes(val);
     clearTimeout(notesTimer.current);
-    notesTimer.current = setTimeout(() => supabase.from('job_applications').update({ notes: val }).eq('id', id), 700);
+    notesTimer.current = setTimeout(async () => {
+      try {
+        const { error } = await supabase.from('job_applications').update({ notes: val }).eq('id', id);
+        if (error) throw error;
+        invalidate(CACHE_KEY);
+      } catch (e: any) {
+        console.error("Failed to autosave notes:", e);
+        showToast("Failed to autosave notes", "error");
+      }
+    }, 700);
   };
 
   const updateField = async (id: string, field: string, val: any) => {
-    await supabase.from('job_applications').update({ [field]: val }).eq('id', id);
-    setApps(p => p.map(a => a.id === id ? { ...a, [field]: val } : a));
+    try {
+      const { error } = await supabase.from('job_applications').update({ [field]: val }).eq('id', id);
+      if (error) throw error;
+      invalidate(CACHE_KEY);
+      setApps(p => p.map(a => a.id === id ? { ...a, [field]: val } : a));
+    } catch (e: any) {
+      console.error(`Failed to update ${field}:`, e);
+      showToast(e.message || `Failed to update ${field}`, "error");
+      load();
+    }
   };
 
   const deleteApp = async (id: string) => {
-    await supabase.from('job_applications').delete().eq('id', id);
-    setDrawerApp(null);
-    setApps(p => p.filter(a => a.id !== id));
+    try {
+      const { error } = await supabase.from('job_applications').delete().eq('id', id);
+      if (error) throw error;
+      invalidate(CACHE_KEY);
+      showToast("Application deleted");
+      setDrawerApp(null);
+      setApps(p => p.filter(a => a.id !== id));
+    } catch (e: any) {
+      console.error("Failed to delete application:", e);
+      showToast(e.message || "Failed to delete application", "error");
+    }
   };
 
   const genFollowUp = async (app: JobApp) => {
@@ -191,7 +318,10 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
         `Write a professional follow-up email. Company: ${app.company_name}. Role: ${app.role_title}. Applied ${daysAgo(app.applied_at)} days ago. Contact: ${app.contact_name || 'Hiring Team'}. Max 80 words. Return only the email body.`
       );
       setFuText(p => ({ ...p, [app.id]: text }));
-    } catch { }
+    } catch (e) {
+      console.error('Follow-up generation failed:', e);
+      setFuText(p => ({ ...p, [app.id]: 'Generation failed. Please try again.' }));
+    }
     setFuLoading(null);
   };
 
@@ -203,20 +333,34 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
   const interviews = apps.filter(a => ['interviewing', 'offer'].includes(a.status));
   const offers = apps.filter(a => a.status === 'offer');
   const overdue = apps.filter(a => isOverdue(a.follow_up_due_at) && !['closed', 'offer', 'saved'].includes(a.status));
-  
+
   const interviewRate = appliedCount > 0 ? Math.round(interviews.length / appliedCount * 100) : 0;
   const offerRate = interviews.length > 0 ? Math.round(offers.length / interviews.length * 100) : 0;
 
+  const pipelineHealth = useMemo(() => {
+    if (!apps.length) return null;
+    const stale = apps.filter(a => {
+      const daysSince = daysAgo(a.last_activity_at);
+      return daysSince > 14 && !['closed', 'offer', 'saved'].includes(a.status);
+    });
+    const atRisk = apps.filter(a => {
+      const daysSince = daysAgo(a.last_activity_at);
+      return daysSince > 7 && daysSince <= 14 && a.status === 'applied';
+    });
+    const score = Math.max(0, Math.min(100, 100 - (stale.length * 20) - (atRisk.length * 10)));
+    return { staleCount: stale.length, atRiskCount: atRisk.length, score, stale, atRisk };
+  }, [apps]);
+
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-slate-200">
-      
+
       {/* ═══ Add Application Modal ═══ */}
       <AnimatePresence>
         {cmdKOpen && (
           <div className="fixed inset-0 z-[300] flex items-start justify-center pt-[15vh] px-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCmdKOpen(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: -20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: -20 }}
               transition={{ duration: 0.15, ease: "easeOut" }}
               className="relative w-full max-w-xl bg-[#111118]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col"
@@ -224,7 +368,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
               <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-white/5">
                 <div className="flex items-center gap-6">
                   <button onClick={() => setAddMode('manual')} className={`pb-2 text-sm font-bold border-b-2 transition-all ${addMode === 'manual' ? 'border-blue-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>Manual Entry</button>
-                  <button onClick={() => setAddMode('smart')} className={`pb-2 text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${addMode === 'smart' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}><Zap size={14}/> Smart Add (AI)</button>
+                  <button onClick={() => setAddMode('smart')} className={`pb-2 text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${addMode === 'smart' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}><Zap size={14} /> Smart Add (AI)</button>
                 </div>
                 <button onClick={() => setCmdKOpen(false)} className="mb-2 text-slate-500 hover:text-white transition-colors"><X size={18} /></button>
               </div>
@@ -239,39 +383,39 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                         placeholder='Paste job details... e.g. "Senior Frontend at Stripe via LinkedIn"'
                         className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-slate-600 text-sm"
                       />
-                      {cmdKSaving ? <Loader2 size={16} className="animate-spin text-indigo-500 ml-2" /> : <button onClick={execSmartAdd} disabled={!cmdKInput.trim()} className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white p-1.5 rounded-lg ml-2 transition-colors"><ArrowRight size={14}/></button>}
+                      {cmdKSaving ? <Loader2 size={16} className="animate-spin text-indigo-500 ml-2" /> : <button onClick={execSmartAdd} disabled={!cmdKInput.trim()} className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white p-1.5 rounded-lg ml-2 transition-colors"><ArrowRight size={14} /></button>}
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-4 flex items-center gap-1.5 bg-indigo-500/5 inline-flex px-3 py-1.5 rounded-md border border-indigo-500/10"><Sparkles size={12} className="text-indigo-400"/> AI automatically extracts Company, Role, Source, and Sets Dates.</p>
+                    <p className="text-[10px] text-slate-500 mt-4 flex items-center gap-1.5 bg-indigo-500/5 inline-flex px-3 py-1.5 rounded-md border border-indigo-500/10"><Sparkles size={12} className="text-indigo-400" /> AI automatically extracts Company, Role, Source, and Sets Dates.</p>
                   </div>
                 ) : (
                   <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <div className="grid grid-cols-2 gap-5">
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-500 mb-1.5 tracking-widest">Company Name <span className="text-blue-500">*</span></label>
-                        <input value={addForm.company} onChange={e => setAddForm({...addForm, company: e.target.value})} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all" placeholder="e.g. Acme Corp" />
+                        <input value={addForm.company} onChange={e => setAddForm({ ...addForm, company: e.target.value })} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all" placeholder="e.g. Acme Corp" />
                       </div>
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-500 mb-1.5 tracking-widest">Role Title <span className="text-blue-500">*</span></label>
-                        <input value={addForm.role} onChange={e => setAddForm({...addForm, role: e.target.value})} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all" placeholder="e.g. Software Engineer" />
+                        <input value={addForm.role} onChange={e => setAddForm({ ...addForm, role: e.target.value })} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all" placeholder="e.g. Software Engineer" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-5">
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-500 mb-1.5 tracking-widest">Source</label>
-                        <select value={addForm.source} onChange={e => setAddForm({...addForm, source: e.target.value})} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-300 outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all appearance-none cursor-pointer">
-                          {['LinkedIn','Referral','Recruiter','Company Site','Other'].map(s => <option key={s} value={s}>{s}</option>)}
+                        <select value={addForm.source} onChange={e => setAddForm({ ...addForm, source: e.target.value })} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-300 outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all appearance-none cursor-pointer">
+                          {['LinkedIn', 'Referral', 'Recruiter', 'Company Site', 'Other'].map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="block text-[10px] font-black uppercase text-slate-500 mb-1.5 tracking-widest">Status</label>
-                        <select value={addForm.status} onChange={e => setAddForm({...addForm, status: e.target.value})} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-300 outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all appearance-none cursor-pointer">
+                        <select value={addForm.status} onChange={e => setAddForm({ ...addForm, status: e.target.value })} className="w-full bg-[#16161E] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-slate-300 outline-none focus:border-blue-500/50 focus:bg-[#1E1E2A] transition-all appearance-none cursor-pointer">
                           {COLS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                         </select>
                       </div>
                     </div>
                     <div className="flex justify-end pt-3">
                       <button onClick={execManualAdd} disabled={!addForm.company || !addForm.role || cmdKSaving} className="flex items-center gap-2 bg-white hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed text-black text-xs font-black uppercase tracking-widest px-6 py-2.5 rounded-xl transition-all shadow-[0_0_15px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                        {cmdKSaving ? <Loader2 size={14} className="animate-spin"/> : <Plus size={14}/>} Add Application
+                        {cmdKSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Application
                       </button>
                     </div>
                   </div>
@@ -285,7 +429,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
       {/* ═══ FAANG Header ═══ */}
       <div className="sticky top-0 z-40 bg-[#0A0A0F]/80 backdrop-blur-2xl border-b border-white/5">
         <div className="max-w-[1600px] mx-auto px-8 h-16 flex items-center justify-between">
-          
+
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
@@ -293,9 +437,9 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
               </div>
               <h1 className="text-lg font-black text-white tracking-tight">Execution Engine</h1>
             </div>
-            
+
             <div className="h-4 w-px bg-white/10" />
-            
+
             <div className="flex items-center bg-[#13131B] border border-white/5 rounded-lg p-0.5">
               <button onClick={() => setViewType('pipeline')} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${viewType === 'pipeline' ? 'bg-[#1E1E2A] text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}>
                 <LayoutGrid size={14} /> Board
@@ -322,11 +466,11 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
 
         {/* ═══ Main View Area ═══ */}
         <div className="flex-1 min-w-0">
-          
+
           {loading ? (
             <div className="flex items-center justify-center h-64"><Loader2 size={24} className="text-blue-500 animate-spin" /></div>
           ) : viewType === 'pipeline' ? (
-            
+
             /* PIPELINE VIEW (Kanban) */
             <div className="flex gap-4 overflow-x-auto pb-8 snap-x">
               {COLS.map(col => {
@@ -336,7 +480,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                     onDragOver={e => { e.preventDefault(); setDragOver(col.key); }}
                     onDragLeave={() => setDragOver(null)}
                     onDrop={e => { e.preventDefault(); if (dragging) move(dragging, col.key); setDragging(null); setDragOver(null); }}>
-                    
+
                     <div className="flex items-center justify-between mb-3 px-1 group/header">
                       <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${col.dot} shadow-[0_0_8px_currentColor]`} />
@@ -356,7 +500,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                             <motion.div layout layoutId={app.id} key={app.id}
                               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
                               draggable onDragStart={() => setDragging(app.id)} onDragEnd={() => setDragging(null)}
-                              onClick={() => { setDrawerApp(app); setNotes(app.notes || ''); }}
+                              onClick={() => { setDrawerApp(app); setNotes(app.notes || ''); setConfirmDelete(false); }}
                               className={`mb-2 bg-[#16161E] border border-white/5 rounded-xl p-4 cursor-pointer group hover:bg-[#1C1C28] hover:border-white/10 hover:shadow-xl transition-all ${dragging === app.id ? 'opacity-40 scale-95 cursor-grabbing' : 'cursor-grab'}`}
                             >
                               <div className="flex items-start justify-between gap-3 mb-3">
@@ -389,9 +533,9 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                 );
               })}
             </div>
-            
+
           ) : (
-            
+
             /* LIST VIEW (Database Table) */
             <div className="bg-[#111118] border border-white/5 rounded-2xl overflow-hidden">
               <table className="w-full text-left border-collapse">
@@ -415,7 +559,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                     </tr>
                   ) : (
                     apps.map(app => (
-                      <tr key={app.id} onClick={() => { setDrawerApp(app); setNotes(app.notes || ''); }} className="hover:bg-white/[0.02] cursor-pointer group transition-colors">
+                      <tr key={app.id} onClick={() => { setDrawerApp(app); setNotes(app.notes || ''); setConfirmDelete(false); }} className="hover:bg-white/[0.02] cursor-pointer group transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-lg ${avatarBg(app.company_name)} flex items-center justify-center text-white font-black text-xs shrink-0`}>
@@ -453,9 +597,54 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
         {/* ═══ Intelligence Pulse Sidebar ═══ */}
         <div className="w-[280px] shrink-0 space-y-6">
           <div className="bg-[#111118] border border-white/5 rounded-2xl p-6 sticky top-24 shadow-2xl">
-            <h3 className="text-white font-bold text-sm mb-6 flex items-center gap-2"><ActivityIcon /> Intelligence Pulse</h3>
-            
+            <h3 className="text-white font-bold text-sm mb-6 flex items-center gap-2"><Activity size={16} className="text-blue-400" /> Intelligence Pulse</h3>
+
             <div className="space-y-6">
+              {pipelineHealth && (
+                <div className="mb-6">
+                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-3">
+                    Pipeline Health
+                  </p>
+                  <div className={`p-4 rounded-2xl border text-center ${
+                    pipelineHealth.score >= 80 ? 'bg-green-500/5 border-green-500/20' :
+                    pipelineHealth.score >= 50 ? 'bg-amber-500/5 border-amber-500/20' :
+                    'bg-red-500/5 border-red-500/20'
+                  }`}>
+                    <p className={`font-black text-3xl mb-1 ${
+                      pipelineHealth.score >= 80 ? 'text-green-400' :
+                      pipelineHealth.score >= 50 ? 'text-amber-400' : 'text-red-400'
+                    }`}>
+                      {pipelineHealth.score}
+                    </p>
+                    <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest">
+                      Health Score
+                    </p>
+                  </div>
+
+                  {pipelineHealth.staleCount > 0 && (
+                    <div className="mt-3 p-3 bg-red-500/5 border border-red-500/15 rounded-xl">
+                      <p className="text-red-400 text-[9px] font-black uppercase tracking-widest">
+                        {pipelineHealth.staleCount} application{pipelineHealth.staleCount > 1 ? 's' : ''} going stale
+                      </p>
+                      <p className="text-slate-600 text-[8px] mt-1">
+                        No activity in 14+ days — follow up now or mark closed
+                      </p>
+                    </div>
+                  )}
+
+                  {pipelineHealth.atRiskCount > 0 && (
+                    <div className="mt-2 p-3 bg-amber-500/5 border border-amber-500/15 rounded-xl">
+                      <p className="text-amber-400 text-[9px] font-black uppercase tracking-widest">
+                        {pipelineHealth.atRiskCount} at risk — follow up window closing
+                      </p>
+                      <p className="text-slate-600 text-[8px] mt-1">
+                        Applied 7-14 days ago with no response
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Funnel */}
               <div>
                 <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-3">Conversion Pipeline</p>
@@ -469,26 +658,26 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                     <p className="text-indigo-400 font-black text-xl">{interviews.length}</p>
                   </div>
                 </div>
-                
+
                 {/* Visual Funnel Bar */}
                 <div className="bg-[#16161E] border border-white/5 rounded-xl p-4 mb-2 relative overflow-hidden">
-                   <div className="flex justify-between items-end mb-2">
-                     <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Interview Rate</span>
-                     <span className={`font-black text-sm ${interviewRate >= 20 ? 'text-green-400' : interviewRate >= 10 ? 'text-amber-400' : 'text-slate-300'}`}>{interviewRate}%</span>
-                   </div>
-                   <div className="h-1.5 w-full bg-[#0A0A0F] rounded-full overflow-hidden">
-                     <div className={`h-full rounded-full transition-all duration-1000 ${interviewRate >= 20 ? 'bg-green-500' : interviewRate >= 10 ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(interviewRate, 100)}%` }} />
-                   </div>
+                  <div className="flex justify-between items-end mb-2">
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Interview Rate</span>
+                    <span className={`font-black text-sm ${interviewRate >= 20 ? 'text-green-400' : interviewRate >= 10 ? 'text-amber-400' : 'text-slate-300'}`}>{interviewRate}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-[#0A0A0F] rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-1000 ${interviewRate >= 20 ? 'bg-green-500' : interviewRate >= 10 ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(interviewRate, 100)}%` }} />
+                  </div>
                 </div>
 
                 <div className="bg-[#16161E] border border-white/5 rounded-xl p-4 relative overflow-hidden">
-                   <div className="flex justify-between items-end mb-2">
-                     <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Offer Rate</span>
-                     <span className={`font-black text-sm ${offerRate >= 50 ? 'text-green-400' : offerRate > 0 ? 'text-amber-400' : 'text-slate-300'}`}>{offerRate}%</span>
-                   </div>
-                   <div className="h-1.5 w-full bg-[#0A0A0F] rounded-full overflow-hidden">
-                     <div className={`h-full rounded-full transition-all duration-1000 ${offerRate >= 50 ? 'bg-green-500' : offerRate > 0 ? 'bg-amber-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(offerRate, 100)}%` }} />
-                   </div>
+                  <div className="flex justify-between items-end mb-2">
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Offer Rate</span>
+                    <span className={`font-black text-sm ${offerRate >= 50 ? 'text-green-400' : offerRate > 0 ? 'text-amber-400' : 'text-slate-300'}`}>{offerRate}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-[#0A0A0F] rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-1000 ${offerRate >= 50 ? 'bg-green-500' : offerRate > 0 ? 'bg-amber-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(offerRate, 100)}%` }} />
+                  </div>
                 </div>
               </div>
 
@@ -498,7 +687,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                 {overdue.length > 0 ? (
                   <div className="space-y-2">
                     {overdue.slice(0, 3).map(a => (
-                      <div key={a.id} className="flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl p-3 cursor-pointer hover:bg-red-500/20 transition-colors" onClick={() => { setDrawerApp(a); setNotes(a.notes || ''); }}>
+                      <div key={a.id} className="flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl p-3 cursor-pointer hover:bg-red-500/20 transition-colors" onClick={() => { setDrawerApp(a); setNotes(a.notes || ''); setConfirmDelete(false); }}>
                         <div className="min-w-0 pr-2">
                           <p className="text-red-100 text-xs font-bold truncate">{a.company_name}</p>
                           <p className="text-red-400 text-[10px] truncate">Follow-up Overdue</p>
@@ -509,7 +698,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                   </div>
                 ) : (
                   <div className="bg-[#16161E] border border-white/5 rounded-xl p-4 flex flex-col items-center justify-center text-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center"><Check size={14} className="text-green-400"/></div>
+                    <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center"><Check size={14} className="text-green-400" /></div>
                     <p className="text-slate-400 text-xs font-medium">Inbox Zero. Great job.</p>
                   </div>
                 )}
@@ -525,19 +714,19 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
           <div className="fixed inset-0 z-[150] flex justify-end">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDrawerApp(null)}
               className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            
-            <motion.div 
+
+            <motion.div
               initial={{ x: '100%', opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: '100%', opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="relative w-full max-w-2xl bg-[#0D0D14] border-l border-white/10 shadow-2xl h-full overflow-y-auto" 
+              className="relative w-full max-w-2xl bg-[#0D0D14] border-l border-white/10 shadow-2xl h-full overflow-y-auto"
               onClick={e => e.stopPropagation()}
             >
               {/* Cover Header */}
               <div className={`h-32 w-full ${avatarBg(drawerApp.company_name)} relative`}>
-                 <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D14] to-transparent opacity-80" />
-                 <button onClick={() => setDrawerApp(null)} className="absolute top-4 right-4 w-8 h-8 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-colors">
-                   <X size={16} />
-                 </button>
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D14] to-transparent opacity-80" />
+                <button onClick={() => setDrawerApp(null)} className="absolute top-4 right-4 w-8 h-8 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-colors">
+                  <X size={16} />
+                </button>
               </div>
 
               <div className="px-10 pb-12 -mt-10 relative z-10">
@@ -556,32 +745,32 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
 
                 {/* Notion-style Properties Grid */}
                 <div className="space-y-1 mb-8 border-b border-white/5 pb-8">
-                  <PropertyRow icon={<LayoutGrid size={14}/>} label="Status">
+                  <PropertyRow icon={<LayoutGrid size={14} />} label="Status">
                     <select value={drawerApp.status} onChange={e => move(drawerApp.id, e.target.value)}
                       className="bg-transparent text-sm font-semibold text-white outline-none cursor-pointer appearance-none">
                       {COLS.map(c => <option key={c.key} value={c.key} className="bg-[#16161E]">{c.label}</option>)}
                     </select>
                   </PropertyRow>
-                  <PropertyRow icon={<Calendar size={14}/>} label="Applied On">
+                  <PropertyRow icon={<Calendar size={14} />} label="Applied On">
                     <span className="text-sm text-slate-300">{formatDate(drawerApp.applied_at)}</span>
                   </PropertyRow>
-                  <PropertyRow icon={<Building2 size={14}/>} label="Source">
+                  <PropertyRow icon={<Building2 size={14} />} label="Source">
                     <select value={drawerApp.source || 'Other'} onChange={e => updateField(drawerApp.id, 'source', e.target.value)}
                       className="bg-transparent text-sm text-slate-300 outline-none cursor-pointer appearance-none">
-                      {['LinkedIn','Referral','Recruiter','Company Site','Other'].map(s => <option key={s} value={s} className="bg-[#16161E]">{s}</option>)}
+                      {['LinkedIn', 'Referral', 'Recruiter', 'Company Site', 'Other'].map(s => <option key={s} value={s} className="bg-[#16161E]">{s}</option>)}
                     </select>
                   </PropertyRow>
-                  <PropertyRow icon={<DollarSign size={14}/>} label="Salary">
+                  <PropertyRow icon={<DollarSign size={14} />} label="Salary">
                     <input value={drawerApp.salary_range || ''} onChange={e => updateField(drawerApp.id, 'salary_range', e.target.value)}
                       className="bg-transparent text-sm text-slate-300 outline-none w-full placeholder:text-slate-600" placeholder="e.g. $120k - $150k" />
                   </PropertyRow>
-                  <PropertyRow icon={<ExternalLink size={14}/>} label="Link">
+                  <PropertyRow icon={<ExternalLink size={14} />} label="Link">
                     <input value={drawerApp.job_url || ''} onChange={e => updateField(drawerApp.id, 'job_url', e.target.value)}
                       className="bg-transparent text-sm text-blue-400 outline-none w-full placeholder:text-slate-600" placeholder="https://" />
                   </PropertyRow>
-                  <PropertyRow icon={<Star size={14}/>} label="Excitement">
+                  <PropertyRow icon={<Star size={14} />} label="Excitement">
                     <div className="flex gap-1">
-                      {[1,2,3,4,5].map(s => (
+                      {[1, 2, 3, 4, 5].map(s => (
                         <button key={s} onClick={() => updateField(drawerApp.id, 'excitement_level', s)}>
                           <Star size={14} className={s <= (drawerApp.excitement_level || 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-700 hover:text-slate-500'} />
                         </button>
@@ -601,7 +790,7 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                 {/* Actions */}
                 <div className="space-y-3 pt-6 border-t border-white/5">
                   <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest mb-3">AI Tools</p>
-                  
+
                   <div className="bg-[#16161E] border border-blue-500/20 rounded-xl p-5 relative overflow-hidden group">
                     <div className="absolute right-0 top-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-colors" />
                     <div className="relative z-10 flex flex-col gap-4">
@@ -613,13 +802,13 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                         className="self-start flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-bold transition-colors shadow-lg shadow-blue-500/20">
                         {fuLoading === drawerApp.id ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />} Draft Email
                       </button>
-                      
+
                       {fuText[drawerApp.id] && (
                         <div className="mt-2 bg-[#0A0A0F] border border-white/10 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-bold text-blue-400">Drafted Email</span>
                             <button onClick={() => copy(fuText[drawerApp.id], drawerApp.id)} className="text-xs text-slate-400 hover:text-white flex items-center gap-1">
-                              {copied === drawerApp.id ? <Check size={12} className="text-green-400"/> : <Copy size={12}/>} Copy
+                              {copied === drawerApp.id ? <Check size={12} className="text-green-400" /> : <Copy size={12} />} Copy
                             </button>
                           </div>
                           <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{fuText[drawerApp.id]}</p>
@@ -628,10 +817,32 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
                     </div>
                   </div>
 
-                  <button onClick={() => { if (window.confirm('Delete this application forever?')) deleteApp(drawerApp.id); }}
-                    className="w-full flex items-center justify-center gap-2 py-3 text-red-500 hover:bg-red-500/10 rounded-xl text-sm font-semibold transition-colors mt-8">
-                    <Trash2 size={14} /> Delete Application
-                  </button>
+                  {!confirmDelete ? (
+                    <button
+                      onClick={() => setConfirmDelete(true)}
+                      className="w-full flex items-center justify-center gap-2 py-3 text-red-500 hover:bg-red-500/10 rounded-xl text-sm font-semibold transition-colors mt-8"
+                    >
+                      <Trash2 size={14} /> Delete Application
+                    </button>
+                  ) : (
+                    <div className="mt-8 p-5 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-3">
+                      <p className="text-red-400 font-bold text-sm">Delete this application forever? This cannot be undone.</p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => { deleteApp(drawerApp.id); setConfirmDelete(false); }}
+                          className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-widest py-2.5 rounded-xl transition-all"
+                        >
+                          Yes, Delete
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(false)}
+                          className="flex-1 bg-white/5 hover:bg-white/10 text-slate-400 font-black text-xs uppercase tracking-widest py-2.5 rounded-xl transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>
@@ -639,16 +850,38 @@ export const ApplicationTrackerView: React.FC<Props> = ({ user }) => {
           </div>
         )}
       </AnimatePresence>
-      
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed bottom-8 right-8 z-[350] ${toast.type === 'success'
+            ? 'bg-green-500/10 border border-green-500/30 shadow-[0_0_30px_rgba(34,197,94,0.15)]'
+            : 'bg-red-500/10 border border-red-500/30 shadow-[0_0_30px_rgba(239,68,68,0.15)]'
+          } rounded-2xl p-4 flex items-center gap-3 animate-in slide-in-from-right fade-in duration-300 shadow-2xl backdrop-blur-md`}>
+          <div className={`w-8 h-8 rounded-full ${toast.type === 'success' ? 'bg-green-500/20' : 'bg-red-500/20'
+            } flex items-center justify-center shrink-0`}>
+            {toast.type === 'success' ? (
+              <Check size={14} className="text-green-400" />
+            ) : (
+              <AlertTriangle size={14} className="text-red-400" />
+            )}
+          </div>
+          <div>
+            <p className={`font-black text-xs uppercase tracking-widest ${toast.type === 'success' ? 'text-green-400' : 'text-red-400'
+              }`}>
+              {toast.type === 'success' ? 'Success' : 'Error'}
+            </p>
+            <p className="text-white text-sm font-bold">{toast.message}</p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
 
-const ActivityIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-);
 
-const PropertyRow: React.FC<{icon: React.ReactNode, label: string, children: React.ReactNode}> = ({icon, label, children}) => (
+
+const PropertyRow: React.FC<{ icon: React.ReactNode, label: string, children: React.ReactNode }> = ({ icon, label, children }) => (
   <div className="flex items-center gap-4 py-1.5 group">
     <div className="w-32 flex items-center gap-2 text-slate-500 shrink-0">
       {icon}

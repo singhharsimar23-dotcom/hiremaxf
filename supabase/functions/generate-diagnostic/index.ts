@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenerativeAI } from 'npm:@google/generative-ai'
 
+import { checkPlanGate } from '../_shared/plan-gate.ts'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -17,7 +19,12 @@ export async function generateDiagnostic(req: Request) {
   )
 
   try {
-    const { user_id, targetRole, roleTrack, resumeText, run_id } = await req.json()
+    const gateResult = await checkPlanGate(req, ['Starter', 'Market Verdict', 'Career Pro', 'Career Elite', 'Automation'])
+    if (gateResult instanceof Response) return gateResult
+    const { user } = gateResult
+
+    const { targetRole, roleTrack, resumeText, run_id } = await req.json()
+    const user_id = user.id
 
     // 1. Initialize Execution State
     if (run_id) {

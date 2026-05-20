@@ -188,54 +188,34 @@ export function AIReviewView(props: AIReviewViewProps) {
 
   if (step === 'paste') {
     return (
-      <div className="max-w-6xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="max-w-4xl mx-auto py-12 px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="mb-12 flex items-center gap-4">
           <button onClick={() => setStep('upload')} className="text-slate-500 hover:text-white transition-colors">
             <ArrowLeft size={24} />
           </button>
           <div>
-            <h2 className="text-4xl font-bold text-white mb-2 uppercase tracking-tight">Target Acquisition</h2>
-            <p className="text-slate-400 font-medium">Provide your source resume and the target job description to establish the baseline.</p>
+            <h2 className="text-4xl font-bold text-white mb-2 uppercase tracking-tight">Source Resume Ingestion</h2>
+            <p className="text-slate-400 font-medium">Paste your raw resume text to establish the calibration baseline.</p>
           </div>
         </div>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 px-1">
-              <FileText size={16} className="text-blue-500" />
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
-                Source Resume Text
-              </label>
-            </div>
-            <textarea
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-              placeholder="Paste your current resume text here..."
-              className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white h-[500px] resize-none outline-none focus:border-blue-500 transition-all font-mono text-xs leading-relaxed custom-scrollbar"
-            />
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 px-1">
+            <FileText size={16} className="text-blue-500" />
+            <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
+              Source Resume Text
+            </label>
           </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 px-1">
-              <Target size={16} className="text-green-500" />
-              <div className="flex flex-col">
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">
-                  Target Job Posting
-                </label>
-                <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Paste the full job description you are applying to</span>
-              </div>
-            </div>
-            <textarea
-              value={targetJD}
-              onChange={(e) => setTargetJD(e.target.value)}
-              placeholder="Paste the target job description here..."
-              className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white h-[500px] resize-none outline-none focus:border-green-500/50 transition-all font-sans text-sm leading-relaxed custom-scrollbar"
-            />
-          </div>
+          <textarea
+            value={resumeText}
+            onChange={(e) => setResumeText(e.target.value)}
+            placeholder="Paste your current resume text here..."
+            className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white h-[500px] resize-none outline-none focus:border-blue-500 transition-all font-mono text-xs leading-relaxed custom-scrollbar"
+          />
         </div>
 
         <button
-          disabled={!resumeText.trim() || !targetJD.trim()}
+          disabled={!resumeText.trim()}
           onClick={() => setStep('analyze')}
           className="w-full mt-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-7 rounded-3xl flex items-center justify-center gap-4 transition-all disabled:opacity-30 uppercase tracking-[0.25em] text-xs shadow-2xl shadow-blue-500/25"
         >
@@ -284,6 +264,21 @@ export function AIReviewView(props: AIReviewViewProps) {
               onChange={(e) => setTargetRole(e.target.value)}
               placeholder="e.g. Senior Machine Learning Engineer"
               className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white outline-none focus:border-blue-500 text-xl font-bold transition-all"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex flex-col">
+              <label className="text-[11px] font-black text-slate-500 uppercase tracking-[0.3em]">Detailed Description</label>
+              <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1.5 flex items-center gap-1.5">
+                <span className="animate-pulse">✦</span> Add description for better analysis: Providing detailed requirements helps our AI engine deliver much more precise, highly-calibrated results.
+              </span>
+            </div>
+            <textarea
+              value={targetJD}
+              onChange={(e) => setTargetJD(e.target.value)}
+              placeholder="Paste the target job description or detailed role requirements here..."
+              className="w-full bg-[#0D0D12] border border-[#2D313D] rounded-2xl p-6 text-white h-[200px] resize-none outline-none focus:border-blue-500 transition-all font-sans text-sm leading-relaxed custom-scrollbar"
             />
           </div>
 

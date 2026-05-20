@@ -195,6 +195,7 @@ export interface EightPointItem {
 // ─── Pipeline Decision Output Types ───────────────────────────────────────────
 
 export interface AtomicChange {
+  id?: string;
   dimension: string; // matches EightPointItem.name
   before: string;    // exact weak phrase from resume
   after: string;     // improved version
@@ -227,8 +228,9 @@ export type ApplicationWindowState = 'GREEN' | 'YELLOW' | 'RED';
 export interface ApplicationWindow {
   state: ApplicationWindowState;
   estimatedHoursToReadiness: number | null;
-  blockers: string[];
-  accelerators: string[];
+  blockers?: string[];
+  accelerators?: string[];
+  explanation?: string;
 }
 
 export interface DecisionOutput {
@@ -257,6 +259,10 @@ export interface DiagnosticResult {
   roleTrack?: RoleTrack;
   resumeText: string;
   overallScore: number;
+  score?: number;
+  created_at?: string;
+  seniority?: string;
+  actionItems?: any[];
   marketReadinessLabel?: 'Low' | 'Medium' | 'High';
   foundation?: { atsShield: string; readability: string; marketReadiness: 'Low' | 'Medium' | 'High'; strengthsSnapshot: string[]; };
   eightPoints: EightPointItem[];
@@ -588,4 +594,25 @@ export interface CoverLetterResult {
     companySignalUsed: string;
     toneCalibration: string;
   };
+}
+
+export interface ActiveAnalysisContext {
+  analysisId: string;
+  role: string;
+  overallScore: number;
+  criticalMisses: string[];
+  chokepointCategory: string;
+  seniorityCalibration: string;
+  rewriteMandates: any[];
+  achievementDensity: number;
+  jdText?: string;
+  timestamp: string;
+}
+
+export interface ActiveRebuildContext {
+  scoreBefore: number;
+  scoreAfter: number;
+  linkedAnalysisId: string;
+  keywordsAdded: string[];
+  timestamp: string;
 }

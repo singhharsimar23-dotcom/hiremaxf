@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense, useRef } from 'react';
 import { BackgroundJobsProvider } from './lib/backgroundJobs';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import Header from './components/Header';
@@ -7,6 +7,7 @@ import LandingPage from './components/LandingPage';
 import AuthView from './components/AuthView';
 import { Footer } from './components/Footer';
 import { Analytics } from '@vercel/analytics/react';
+import { getCached, setCached, invalidate } from './lib/queryCache';
 
 // Lazy load large/dynamic components to reduce initial bundle from 3.2MB to under 200KB (10x faster loads)
 const AIReviewView = lazy(() => import('./components/AIReviewView').then(m => ({ default: m.AIReviewView })));
@@ -41,19 +42,37 @@ import {
     Shield, UploadCloud, Plus, Info, Circle, X, Loader2, AlertTriangle,
     History, FileText, ChevronRight, Activity
 } from 'lucide-react';
-import { AppView, DiagnosticResult, UserPlan, ResumeGroup, ResumeVersion, ResumeProfile, StructuredResume, UserProfile, RoleTrack, BackgroundJob, JobType, JobStatus } from './types';
+import { AppView, DiagnosticResult, UserPlan, ResumeGroup, ResumeVersion, ResumeProfile, StructuredResume, UserProfile, RoleTrack, BackgroundJob, JobType, JobStatus, ActiveAnalysisContext, ActiveRebuildContext } from './types';
 import { supabase } from './lib/supabase';
 import { QUICK_ACTIONS } from './constants';
 import { isAdminUser } from './lib/admin';
 import { runFastVerify } from './lib/hybridEngine';
+import { FullReviewSkeleton, ResumeHistorySkeleton, DashboardSkeleton, MarketIntelSkeleton } from './components/Skeletons';
 
 
 function App() {
-    const [view, setView] = useState<AppView>('landing');
+    const [view, setView] = useState<AppView>(() => {
+      try {
+        const keys = Object.keys(localStorage);
+        const sessionKey = keys.find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+        if (sessionKey) {
+          const token = JSON.parse(localStorage.getItem(sessionKey) || '{}');
+          if (token?.access_token) return 'dashboard';
+        }
+      } catch {}
+      return 'landing';
+    });
     const [teaserTarget, setTeaserTarget] = useState<AppView | null>(null);
     const [user, setUser] = useState<any>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+
+    const [navigationWarningShown, setNavigationWarningShown] = useState(false);
+    const [pendingNavigation, setPendingNavigation] = useState<{ targetView: AppView; id?: string; data?: any } | null>(null);
+    const bypassWarningRef = useRef(false);
+    const lastValidAnalysis = useRef<DiagnosticResult | null>(null);
+    const executionRunsChannelRef = useRef<any>(null);
+    const liveHistoryChannelRef = useRef<any>(null);
 
     const [resumeReceived, setResumeReceived] = useState(false);
     const [pendingResumeText, setPendingResumeText] = useState('');
@@ -61,6 +80,8 @@ function App() {
     const [analysisHistory, setAnalysisHistory] = useState<Record<string, DiagnosticResult>>({});
     const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
     const [activeRebuild, setActiveRebuild] = useState<{ scoreBefore: number; scoreAfter: number; linkedAnalysisId: string } | null>(null);
+    const [activeAnalysisCtx, setActiveAnalysisCtx] = useState<ActiveAnalysisContext | null>(null);
+    const [activeRebuildCtx, setActiveRebuildCtx] = useState<ActiveRebuildContext | null>(null);
 
     const [resumeHistory, setResumeHistory] = useState<ResumeGroup[]>([]);
     const [coverLetterHistory, setCoverLetterHistory] = useState<any[]>([]);
@@ -85,8 +106,52 @@ function App() {
     const currentAnalysis = activeAnalysisId ? analysisHistory[activeAnalysisId] : null;
 
     useEffect(() => {
+        if (currentAnalysis && activeAnalysisId) {
+            let lowestName = 'Strategic Scope';
+            let lowestScore = 100;
+            if (currentAnalysis.eightPoints && Array.isArray(currentAnalysis.eightPoints)) {
+                currentAnalysis.eightPoints.forEach((pt: any) => {
+                    const scoreVal = pt.score !== undefined ? pt.score : (pt.status === 'fail' ? 30 : pt.status === 'warning' ? 60 : 90);
+                    if (scoreVal < lowestScore) {
+                        lowestScore = scoreVal;
+                        lowestName = pt.name;
+                    }
+                });
+            }
+
+            const criticalMisses = currentAnalysis.eightPoints && Array.isArray(currentAnalysis.eightPoints)
+                ? currentAnalysis.eightPoints.filter((pt: any) => {
+                    const scoreVal = pt.score !== undefined ? pt.score : (pt.status === 'fail' ? 30 : pt.status === 'warning' ? 60 : 90);
+                    return scoreVal < 70;
+                }).map((pt: any) => pt.name)
+                : [];
+
+            setActiveAnalysisCtx({
+                analysisId: activeAnalysisId,
+                role: currentAnalysis.role || 'Executive',
+                overallScore: currentAnalysis.score || 0,
+                criticalMisses,
+                chokepointCategory: lowestName,
+                seniorityCalibration: currentAnalysis.seniority || 'Senior',
+                rewriteMandates: currentAnalysis.actionItems || [],
+                achievementDensity: 0.75,
+                jdText: currentAnalysis.jdText,
+                timestamp: currentAnalysis.created_at || new Date().toISOString()
+            });
+        } else {
+            setActiveAnalysisCtx(null);
+        }
+    }, [currentAnalysis, activeAnalysisId]);
+
+    useEffect(() => {
         localStorage.setItem('hiremax_active_jobs', JSON.stringify(jobs));
     }, [jobs]);
+
+    useEffect(() => {
+        if (currentAnalysis) {
+            lastValidAnalysis.current = currentAnalysis;
+        }
+    }, [currentAnalysis]);
 
     // Handle basic URL-based routing for OAuth redirects and Back/Forward navigation
     useEffect(() => {
@@ -205,7 +270,7 @@ function App() {
 
         // Consolidate payload with any derived IDs
         const finalPayload = { ...payload };
-        if (type === 'REBUILD' && !finalPayload.resume_id) {
+        if (type === 'REBUILD' && (!finalPayload.resume_id || finalPayload.resume_id === 'NEW')) {
             finalPayload.resume_id = (crypto as any).randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
         }
 
@@ -244,7 +309,14 @@ function App() {
                 } else if (type === 'REBUILD') {
                     // Trigger worker with the version_id (now handled entirely server-side to avoid RLS issues)
                     const { data, error } = await supabase.functions.invoke('generate-rebuild', {
-                        body: { ...commonBody, application_id: finalPayload.application_id, resume_id: finalPayload.resume_id }
+                        body: { 
+                            ...commonBody, 
+                            application_id: finalPayload.application_id, 
+                            resume_id: finalPayload.resume_id,
+                            targetRole: finalPayload.role || finalPayload.targetRole,
+                            roleTrack: finalPayload.track || finalPayload.roleTrack,
+                            sourceText: finalPayload.resumeText || finalPayload.sourceText
+                        }
                     });
                     if (error) throw error;
                     result = data;
@@ -292,7 +364,18 @@ function App() {
     // This gives instant job completion feedback vs. up to 15 second polling delay.
     useEffect(() => {
         const runningIds = Object.keys(jobs).filter(id => jobs[id].status === 'RUNNING');
-        if (runningIds.length === 0 || !user) return;
+        if (runningIds.length === 0 || !user) {
+            if (executionRunsChannelRef.current) {
+                supabase.removeChannel(executionRunsChannelRef.current);
+                executionRunsChannelRef.current = null;
+            }
+            return;
+        }
+
+        if (executionRunsChannelRef.current) {
+            supabase.removeChannel(executionRunsChannelRef.current);
+            executionRunsChannelRef.current = null;
+        }
 
         // Closure-safe handler: resolves the final result for a completed run
         const resolveResult = async (runId: string, jobType: string, resumeId?: string): Promise<any> => {
@@ -348,7 +431,14 @@ function App() {
             )
             .subscribe();
 
-        return () => { supabase.removeChannel(channel); };
+        executionRunsChannelRef.current = channel;
+
+        return () => {
+            if (executionRunsChannelRef.current) {
+                supabase.removeChannel(executionRunsChannelRef.current);
+                executionRunsChannelRef.current = null;
+            }
+        };
     }, [jobs, user]);
 
     // Stable ref so onAuthStateChange can read latest view without stale closure
@@ -356,90 +446,110 @@ function App() {
     useEffect(() => { viewRef.current = view; }, [view]);
 
     useEffect(() => {
-        let subscription: any = null;
-        
-        // Timeout guard: Guarantee loader is dismissed after 2.5 seconds max
-        const timeoutId = setTimeout(() => {
-            setLoading(false);
-        }, 2500);
+        let cancelled = false;
 
-        const initAuth = async () => {
-            // Get initial session immediately to speed up load time and prevent race conditions
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                const currentUser = session && session.user ? session.user : null;
-                setUser(currentUser);
-                if (currentUser) {
-                    await fetchUserData(currentUser);
-                }
-            } catch (err) {
-                console.error("Failed to get initial session:", err);
-            } finally {
+        // Step 1: Resolve session immediately from local cache (< 5ms on return visits).
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (cancelled) return;
+            if (session?.user) {
+                setUser(session.user);
+                fetchUserData(session.user);
+                setView(prev => {
+                    if (prev === 'landing' || prev === 'auth') {
+                        const params = new URLSearchParams(window.location.search);
+                        if (params.get('redirect') === 'auth-bridge' || params.get('view') === 'auth-bridge') {
+                            window.history.pushState({}, '', '/auth-bridge');
+                            return 'auth-bridge';
+                        } else {
+                            window.history.pushState({}, '', '/dashboard');
+                            return 'dashboard';
+                        }
+                    }
+                    return prev;
+                });
+            }
+            setLoading(false); // Always unblock render after getSession resolves
+        });
+
+        // Step 2: Listen for future state changes (login, logout, token refresh).
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (cancelled) return;
+
+            if (event === 'SIGNED_IN' && session?.user) {
+                setUser(session.user);
+                fetchUserData(session.user);
+                setView(prev => {
+                    if (prev === 'landing' || prev === 'auth') {
+                        const params = new URLSearchParams(window.location.search);
+                        if (params.get('redirect') === 'auth-bridge' || params.get('view') === 'auth-bridge') {
+                            window.history.pushState({}, '', '/auth-bridge');
+                            return 'auth-bridge';
+                        } else {
+                            window.history.pushState({}, '', '/dashboard');
+                            return 'dashboard';
+                        }
+                    }
+                    return prev;
+                });
                 setLoading(false);
             }
 
-            // Listen for auth state changes
-            const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-                try {
-                    const currentUser = session && session.user ? session.user : null;
-                    setUser(currentUser);
+            if (event === 'SIGNED_OUT') {
+                setUser(null);
+                setProfile(null);
+                setResumeHistory([]);
+                setAnalysisHistory({});
+                setCoverLetterHistory([]);
+                setView('landing');
+                window.history.pushState({}, '', '/');
+            }
 
-                    if (currentUser) {
-                        await fetchUserData(currentUser);
-                        if (event === 'SIGNED_IN') {
-                            const cv = viewRef.current;
-                            if (cv === 'auth' || cv === 'landing') {
-                                const params = new URLSearchParams(window.location.search);
-                                if (params.get('redirect') === 'auth-bridge' || params.get('view') === 'auth-bridge') {
-                                    setView('auth-bridge');
-                                    window.history.pushState({}, '', '/auth-bridge');
-                                } else {
-                                    setView('dashboard');
-                                    window.history.pushState({}, '', '/dashboard');
-                                }
-                            }
-                        }
-                        
-                        // Securely clear any OAuth hashes or query parameters from the address bar now that we are successfully authenticated
-                        if (window.location.hash || window.location.search) {
-                            const params = new URLSearchParams(window.location.search);
-                            if (!params.get('ext_id')) {
-                                window.history.replaceState({}, document.title, window.location.pathname);
-                            }
-                        }
-                    } else {
-                        setProfile(null);
-                        setResumeHistory([]);
-                        setAnalysisHistory({});
-                        setCoverLetterHistory([]);
-                        
-                        // If there was an OAuth error in the URL, clean it up
-                        if (window.location.hash.includes('error=') || window.location.search.includes('error=')) {
-                            window.history.replaceState({}, document.title, window.location.pathname);
+            // TOKEN_REFRESHED: ONLY update the user object. NEVER navigate.
+            if (event === 'TOKEN_REFRESHED' && session?.user) {
+                setUser(session.user);
+            }
+
+            // INITIAL_SESSION fires on page load — same as getSession but event-based.
+            // Only navigate if we haven't already resolved from getSession.
+            if (event === 'INITIAL_SESSION' && session?.user) {
+                setUser(session.user);
+                fetchUserData(session.user);
+                setView(prev => {
+                    if (prev === 'landing' || prev === 'auth') {
+                        const params = new URLSearchParams(window.location.search);
+                        if (params.get('redirect') === 'auth-bridge' || params.get('view') === 'auth-bridge') {
+                            window.history.pushState({}, '', '/auth-bridge');
+                            return 'auth-bridge';
+                        } else {
+                            window.history.pushState({}, '', '/dashboard');
+                            return 'dashboard';
                         }
                     }
-                } catch (err) {
-                    console.error("Error during auth state change:", err);
-                } finally {
-                    setLoading(false);
-                    clearTimeout(timeoutId);
-                }
-            });
-            subscription = data.subscription;
-        };
-
-        initAuth();
+                    return prev;
+                });
+                setLoading(false);
+            }
+        });
 
         return () => {
-            clearTimeout(timeoutId);
-            if (subscription) {
-                subscription.unsubscribe();
-            }
+            cancelled = true;
+            subscription.unsubscribe();
         };
     }, []);
 
     async function fetchUserData(authUser: any) {
         try {
+            // Instantly hydrate from in-memory query cache if present (stale-while-revalidate)
+            const cachedProfile = getCached<UserProfile>('user_plan');
+            if (cachedProfile) {
+                setProfile(cachedProfile);
+            }
+
+            const cachedCoverLetters = getCached<any[]>('cover_letters');
+            if (cachedCoverLetters) {
+                setCoverLetterHistory(cachedCoverLetters);
+            }
+
             // Fetch profile, resumes, analyses, and cover letters in parallel for 3x faster hydration
             const [profileRes, resumesRes, analysesRes, coverLettersRes] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
@@ -475,6 +585,7 @@ function App() {
 
             if (updatedProfile) {
                 setProfile(updatedProfile);
+                setCached('user_plan', updatedProfile);
             }
 
             const resumes = resumesRes.data;
@@ -513,18 +624,33 @@ function App() {
             const coverLetters = coverLettersRes.data;
             if (coverLetters) {
                 setCoverLetterHistory(coverLetters);
+                setCached('cover_letters', coverLetters);
             }
         } catch (e) {
             console.error("Failed to hydrate user profile/data:", e);
         }
     }
 
-    // Subscribe to resume_versions and cover_letters for live history updates once per user session
+    // Subscribe to profiles, resume_versions and cover_letters for live history & plan updates once per user session
     useEffect(() => {
-        if (!user) return;
+        if (!user) {
+            if (liveHistoryChannelRef.current) {
+                supabase.removeChannel(liveHistoryChannelRef.current);
+                liveHistoryChannelRef.current = null;
+            }
+            return;
+        }
+
+        if (liveHistoryChannelRef.current) {
+            supabase.removeChannel(liveHistoryChannelRef.current);
+            liveHistoryChannelRef.current = null;
+        }
 
         const channel = supabase
             .channel(`live_history_${user.id}_${Math.random().toString(36).substring(2, 9)}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => {
+                fetchUserData(user);
+            })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'resume_versions' }, () => {
                 fetchUserData(user);
             })
@@ -533,8 +659,13 @@ function App() {
             })
             .subscribe();
 
+        liveHistoryChannelRef.current = channel;
+
         return () => {
-            supabase.removeChannel(channel);
+            if (liveHistoryChannelRef.current) {
+                supabase.removeChannel(liveHistoryChannelRef.current);
+                liveHistoryChannelRef.current = null;
+            }
         };
     }, [user]);
 
@@ -561,7 +692,9 @@ function App() {
             .select()
             .single();
         if (!error && updated) {
+            invalidate('user_plan');
             setProfile(updated as UserProfile);
+            setCached('user_plan', updated);
         }
     };
 
@@ -569,6 +702,7 @@ function App() {
         try {
             const { error } = await supabase.from('cover_letters').delete().eq('id', id);
             if (!error) {
+                invalidate('cover_letters');
                 setCoverLetterHistory(prev => prev.filter(c => c.id !== id));
             }
         } catch (err) {
@@ -577,6 +711,17 @@ function App() {
     };
 
     const handleSetView = useCallback((targetView: AppView, id?: string, data?: any) => {
+        const leavingRestrictedView = ['rebuild-standalone', 'ai-review', 'career-intelligence'].includes(view);
+        const hasActiveJob = Object.values(jobs).some(j => j.status === 'RUNNING');
+
+        if (leavingRestrictedView && hasActiveJob && !bypassWarningRef.current && targetView !== view) {
+            setPendingNavigation({ targetView, id, data });
+            setNavigationWarningShown(true);
+            return;
+        }
+
+        bypassWarningRef.current = false; // Reset after bypass
+
         const eliteRequired = ['career-intelligence', 'transformation-factory', 'applications'];
         if (eliteRequired.indexOf(targetView) !== -1 && !isElite) {
             setTeaserTarget(targetView);
@@ -595,7 +740,33 @@ function App() {
             setPreFilledSource(data.preFilled);
         }
         window.history.pushState({}, '', `/${targetView === 'landing' ? '' : targetView}${id ? `?id=${id}` : ''}`);
-    }, [isElite, profile, user]);
+    }, [isElite, profile, user, view, jobs]);
+
+    const handleConfirmNavigation = () => {
+        if (pendingNavigation) {
+            bypassWarningRef.current = true;
+            handleSetView(pendingNavigation.targetView, pendingNavigation.id, pendingNavigation.data);
+            setPendingNavigation(null);
+        }
+        setNavigationWarningShown(false);
+    };
+
+    const handleCancelNavigation = () => {
+        setPendingNavigation(null);
+        setNavigationWarningShown(false);
+    };
+
+    const activeRunningJob = Object.values(jobs).find(j => j.status === 'RUNNING');
+    const handleActiveJobClick = () => {
+        if (!activeRunningJob) return;
+        if (activeRunningJob.type === 'REBUILD') {
+            handleSetView('rebuild-standalone');
+        } else if (activeRunningJob.type === 'ANALYSIS') {
+            handleSetView('ai-review');
+        } else if (activeRunningJob.type === 'OUTLOOK') {
+            handleSetView('career-intelligence');
+        }
+    };
 
     const isProtectedRoute = ['dashboard', 'applications', 'ai-review', 'full-review', 'career-intelligence', 'market-outlook', 'rebuild', 'rebuild-standalone', 'profile', 'history', 'resume-editor', 'settings', 'billing', 'interview-prep', 'cover-letter', 'tracker', 'linkedin-optimizer', 'preview', 'admin'].includes(view);
     const isAdminRoute = view === 'admin';
@@ -612,7 +783,7 @@ function App() {
 
     const hasActiveJob = (Object.values(jobs) as BackgroundJob[]).some(j => j.status === 'RUNNING');
 
-    if (loading && isProtectedRoute) {
+    if (loading) {
         return (
             <div className="min-h-screen bg-[#0F1117] flex items-center justify-center flex-col gap-6">
                 <div className="relative">
@@ -638,12 +809,23 @@ function App() {
                 <Header currentView={teaserTarget || activeView} setView={handleSetView} plan={plan} onNewResume={() => handleSetView('resume-editor')} />
             )}
 
-            {hasActiveJob && showNav && (
-                <div className="fixed bottom-6 right-6 z-[200] bg-[#16161E] border border-blue-500/30 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-500">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Background Engine Active</span>
-                    <Loader2 size={14} className="text-blue-500 animate-spin" />
-                </div>
+            {hasActiveJob && showNav && activeRunningJob && (
+                <button
+                    onClick={handleActiveJobClick}
+                    className="fixed bottom-6 right-6 z-[200] bg-[#161622] border border-blue-500/40 hover:border-blue-400 px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-500 group transition-all hover:scale-105 cursor-pointer text-left ring-1 ring-blue-500/20"
+                >
+                    <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                    <div className="flex flex-col">
+                        <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none">
+                            {activeRunningJob.type === 'REBUILD' ? 'Resume Rebuild' : activeRunningJob.type === 'OUTLOOK' ? 'Market Command' : 'ATS Diagnosis'}
+                        </span>
+                        <span className="text-[10px] font-bold text-white uppercase tracking-wide mt-1 flex items-center gap-1.5 leading-none">
+                            Background Engine Active
+                            <ArrowRight size={10} className="text-blue-400 group-hover:translate-x-1 transition-transform" />
+                        </span>
+                    </div>
+                    <Loader2 size={16} className="text-blue-500 animate-spin ml-2" />
+                </button>
             )}
 
             <main className={"flex-1 flex flex-col " + (showNav ? 'pt-20' : '')}>
@@ -670,8 +852,10 @@ function App() {
                                 <Pricing setPlan={async function (p) {
                                     if (user) {
                                         await supabase.from('profiles').update({ plan: p }).eq('id', user.id);
-
-                                        setProfile(Object.assign({}, profile, { plan: p }));
+                                        invalidate('user_plan');
+                                        const updated = Object.assign({}, profile, { plan: p });
+                                        setProfile(updated);
+                                        setCached('user_plan', updated);
                                     }
                                     setTeaserTarget(null);
                                     handleSetView('dashboard');
@@ -701,13 +885,15 @@ function App() {
                             )}
                             {activeView === 'auth-bridge' && <AuthBridge />}
                             {activeView === 'dashboard' && (
-                                <DashboardView
-                                    currentAnalysis={currentAnalysis}
-                                    plan={plan}
-                                    onNavigate={handleSetView}
-                                    user={user}
-                                    history={resumeHistory}
-                                />
+                                !profile ? <DashboardSkeleton /> : (
+                                    <DashboardView
+                                        currentAnalysis={currentAnalysis}
+                                        plan={plan}
+                                        onNavigate={handleSetView}
+                                        user={user}
+                                        history={resumeHistory}
+                                    />
+                                )
                             )}
                             {activeView === 'applications' && <ApplicationExecutionView user={profile} applicationId={selectedApplicationId || undefined} onNavigate={handleSetView} />}
                             {activeView === 'ai-review' && <AIReviewView plan={plan} onResult={(r) => {
@@ -716,23 +902,27 @@ function App() {
                                 handleSetView('full-review');
                             }} onUpload={(t) => { }} pendingResumeText={pendingResumeText} onUpgrade={function () { handleSetView('pricing'); }} onStartScratch={() => handleSetView('resume-editor')} activeJobs={jobs} dispatchJob={dispatchJob} />}
                             {activeView === 'full-review' && (
-                                <ErrorBoundary name="Market Standing">
-                                    <FullReviewView
-                                        result={currentAnalysis}
-                                        plan={plan}
-                                        onUpgrade={function () { handleSetView('pricing'); }}
-                                        onRebuildRequest={(id) => handleSetView('rebuild-standalone')}
-                                        setView={handleSetView}
-                                        analysisHistory={analysisHistory}
-                                        setActiveAnalysisId={setActiveAnalysisId}
-                                        activeRebuild={activeRebuild}
-                                    />
-                                </ErrorBoundary>
+                                loading ? <FullReviewSkeleton /> : (
+                                    <ErrorBoundary name="Market Standing">
+                                        <FullReviewView
+                                            result={currentAnalysis || lastValidAnalysis.current}
+                                            plan={plan}
+                                            onUpgrade={function () { handleSetView('pricing'); }}
+                                            onRebuildRequest={(id) => handleSetView('rebuild-standalone')}
+                                            setView={handleSetView}
+                                            analysisHistory={analysisHistory}
+                                            setActiveAnalysisId={setActiveAnalysisId}
+                                            activeRebuild={activeRebuild}
+                                            activeRebuildCtx={activeRebuildCtx}
+                                        />
+                                    </ErrorBoundary>
+                                )
                             )}
                             <div style={{ display: activeView === 'career-intelligence' ? 'block' : 'none' }}>
                                 <CareerIntelligenceView
-                                    analysisResult={currentAnalysis}
+                                    analysisResult={currentAnalysis || lastValidAnalysis.current}
                                     resumeText={currentAnalysis && currentAnalysis.resumeText ? currentAnalysis.resumeText : ''}
+                                    resumeProfile={activeAnalysisCtx}
                                     plan={plan}
                                     setView={handleSetView}
                                     activeJobs={jobs}
@@ -753,10 +943,17 @@ function App() {
                                 />
                             )}
                             {activeView === 'rebuild-standalone' && <RebuildStandaloneView
+                                userId={user?.id}
                                 plan={plan}
-                                activeAnalysis={currentAnalysis ? { targetRole: currentAnalysis.role || 'Executive', chokepoint: 'Strategic Scope', chokepointScore: 45, atsScore: currentAnalysis.score || 65 } : null}
+                                activeAnalysis={activeAnalysisCtx}
                                 credits={profile && profile.credits ? profile.credits : 0}
-                                setCredits={async function (c) { }}
+                                setCredits={async function (c) {
+                                    if (profile) {
+                                        const updated = { ...profile, credits: c };
+                                        setProfile(updated);
+                                        setCached('user_plan', updated);
+                                    }
+                                }}
                                 onRebuildSuccess={async function (rebuilt: any, vid?: string, label?: string, gid?: string) {
                                     if (user) await fetchUserData(user);
                                     setPreFilledSource(null); // Clear context on success
@@ -783,6 +980,11 @@ function App() {
                                             baselineScore
                                         );
 
+                                        const baselineVerify = runFastVerify(
+                                            currentAnalysis.resumeText || '',
+                                            currentAnalysis.jdText || ''
+                                        );
+
                                         const scoreDelta = fastVerifyResult.scoreDelta;
                                         const computedScoreAfter = Math.min(99, Math.max((currentAnalysis.score || 70) + scoreDelta, (currentAnalysis.score || 70)));
 
@@ -790,6 +992,14 @@ function App() {
                                             scoreBefore: currentAnalysis.score || 70,
                                             scoreAfter: computedScoreAfter,
                                             linkedAnalysisId: activeAnalysisId
+                                        });
+
+                                        setActiveRebuildCtx({
+                                            scoreBefore: baselineVerify.precisionScore,
+                                            scoreAfter: fastVerifyResult.precisionScore,
+                                            linkedAnalysisId: activeAnalysisId,
+                                            keywordsAdded: fastVerifyResult.matchedTerms.filter((t: string) => !baselineVerify.matchedTerms.includes(t)),
+                                            timestamp: new Date().toISOString(),
                                         });
                                     }
 
@@ -833,7 +1043,10 @@ function App() {
                             {activeView === 'pricing' && <Pricing user={user} setPlan={async function (p) {
                                 if (user) {
                                     await supabase.from('profiles').update({ plan: p }).eq('id', user.id);
-                                    setProfile(Object.assign({}, profile, { plan: p }));
+                                    invalidate('user_plan');
+                                    const updated = Object.assign({}, profile, { plan: p });
+                                    setProfile(updated);
+                                    setCached('user_plan', updated);
                                 }
                             }} setView={handleSetView} currentPlan={plan} />}
                             {activeView === 'settings' && <AccountSettings plan={plan} profile={profile} />}
@@ -841,7 +1054,9 @@ function App() {
                             {activeView === 'faq' && <FAQ setView={handleSetView} />}
                             {activeView === 'contact' && <Contact user={user} />}
                             {activeView === 'admin' && adminAllowed && <ErrorBoundary name="Admin"><AdminIntelligence /></ErrorBoundary>}
-                            {activeView === 'interview-prep' && <InterviewPrepView plan={plan} history={resumeHistory} user={user} onUpgrade={() => handleSetView('pricing')} dispatchJob={dispatchJob} activeJobs={jobs} />}
+                            <div style={{ display: activeView === 'interview-prep' ? 'block' : 'none' }}>
+                                <InterviewPrepView plan={plan} history={resumeHistory} user={user} onUpgrade={() => handleSetView('pricing')} dispatchJob={dispatchJob} activeJobs={jobs} />
+                            </div>
                             {activeView === 'cover-letter' && <CoverLetterView plan={plan} history={resumeHistory} user={user} onUpgrade={() => handleSetView('pricing')} dispatchJob={dispatchJob} activeJobs={jobs} />}
                             {activeView === 'tracker' && <ApplicationTrackerView plan={plan} user={user} history={resumeHistory} onUpgrade={() => handleSetView('pricing')} />}
                             {activeView === 'linkedin-optimizer' && <LinkedInOptimizerView plan={plan} history={resumeHistory} user={user} onUpgrade={() => handleSetView('pricing')} dispatchJob={dispatchJob} activeJobs={jobs} />}
@@ -875,6 +1090,38 @@ function App() {
                     </div>
                 </ErrorBoundary>
             </main>
+            {navigationWarningShown && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="bg-[#111118] border border-red-500/30 rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl relative overflow-hidden ring-1 ring-red-500/20">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-[40px] pointer-events-none" />
+                        <div className="flex flex-col items-center text-center space-y-6">
+                            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                                <AlertTriangle className="h-8 w-8 text-red-500 animate-pulse" />
+                            </div>
+                            <div className="space-y-3">
+                                <h3 className="text-2xl font-black text-white uppercase tracking-tight">Active Operation in Progress</h3>
+                                <p className="text-slate-400 text-sm leading-relaxed font-medium">
+                                    You have a running generation in the background. Leaving this workspace now may cancel or interrupt the active optimization process.
+                                </p>
+                            </div>
+                            <div className="w-full flex flex-col gap-3 pt-2">
+                                <button
+                                    onClick={handleConfirmNavigation}
+                                    className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs transition-colors animate-in"
+                                >
+                                    Yes, Leave Workspace
+                                </button>
+                                <button
+                                    onClick={handleCancelNavigation}
+                                    className="w-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-black py-4 rounded-xl uppercase tracking-widest text-xs transition-colors border border-white/10"
+                                >
+                                    Stay and Complete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {showFooter && <Footer setView={handleSetView} />}
             <Analytics />
         </div>

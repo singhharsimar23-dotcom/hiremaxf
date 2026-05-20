@@ -35,29 +35,58 @@ interface HeaderProps {
   onNewResume: () => void;
 }
 
+// One entry per lazy-loaded view. Keys must match the `targetView` prop you pass each NavLink.
+const PREFETCH_MAP: Record<string, () => void> = {
+  'tracker':             () => import('./ApplicationTrackerView'),
+  'career-intelligence': () => import('./CareerIntelligenceView'),
+  'interview-prep':      () => import('./InterviewPrepView'),
+  'cover-letter':        () => import('./CoverLetterView'),
+  'rebuild-standalone':  () => import('./RebuildStandaloneView'),
+  'market-insights':     () => import('./MarketOutlookView'),
+  'dashboard':           () => import('./DashboardView'),
+  'ai-review':           () => import('./AIReviewView'),
+  'linkedin-optimizer':  () => import('./LinkedInOptimizerView'),
+  'full-review':         () => import('./FullReviewView'),
+};
+
 const NavLink: React.FC<{
   label: string;
   active: boolean;
   onClick: () => void;
   icon?: React.ReactNode;
   isLocked?: boolean;
-}> = ({ label, active, onClick, icon, isLocked }) => (
-  <button
-    onClick={onClick}
-    className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 font-bold text-sm whitespace-nowrap relative group ${active
-      ? 'text-white bg-white/5'
-      : 'text-slate-400 hover:text-white hover:bg-white/5'
-      }`}
-  >
-    {icon}
-    {label}
-    {isLocked && (
-      <div className="flex items-center justify-center w-4 h-4 rounded-full bg-amber-500/10 border border-amber-500/20 ml-1">
-        <Lock size={8} className="text-amber-500" />
+  targetView?: string;
+}> = ({ label, active, onClick, icon, isLocked, targetView }) => {
+  const handlePrefetch = () => {
+    const fn = PREFETCH_MAP[targetView ?? ''];
+    if (fn) {
+      try { fn(); } catch (_) { /* prefetch is best-effort, never throw */ }
+    }
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={handlePrefetch}
+      onFocus={handlePrefetch}
+      onTouchStart={handlePrefetch} // fires ~100ms before tap resolves on mobile
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 font-bold text-sm whitespace-nowrap relative group ${active
+        ? 'text-white bg-white/5'
+        : 'text-slate-400 hover:text-white hover:bg-white/5'
+        }`}
+    >
+      <div className="relative shrink-0">
+        {icon}
+        {isLocked && (
+          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-[#0F1117] border border-amber-500/40 flex items-center justify-center shadow-lg">
+            <Lock size={7} className="text-amber-500 fill-amber-500/10" />
+          </div>
+        )}
       </div>
-    )}
-  </button>
-);
+      {label}
+    </button>
+  );
+};
 
 const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -80,7 +109,11 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
-      localStorage.clear();
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('hiremax_') || key.startsWith('sb-')) {
+          localStorage.removeItem(key);
+        }
+      });
       sessionStorage.clear();
       window.location.href = '/';
     } catch (error) {
@@ -103,12 +136,13 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
           <h1 className="text-white font-extrabold text-xl tracking-tight hidden sm:block">HireMax</h1>
         </div>
 
-        <nav className="hidden lg:flex items-center gap-1 overflow-x-auto custom-scrollbar pr-4">
+        <nav className="hidden lg:flex items-center gap-1">
           <NavLink
             label="Dashboard"
             active={currentView === 'dashboard'}
             onClick={() => setView('dashboard')}
             icon={<LayoutDashboard size={18} className="opacity-70" />}
+            targetView="dashboard"
           />
 
           {/* Hiding Profile option from top bar as per user request (don't delete)
@@ -117,6 +151,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             active={currentView === 'profile'}
             onClick={() => setView('profile')}
             icon={<User size={18} className="opacity-70" />}
+            targetView="profile"
           />
           */}
 
@@ -127,6 +162,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             onClick={() => setView('full-review')}
             icon={<ShieldCheck size={18} className={`opacity-70 ${isPro ? 'text-amber-500' : 'text-slate-600'}`} />}
             isLocked={!isPro}
+            targetView="full-review"
           />
 
           <NavLink
@@ -135,6 +171,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             onClick={() => setView('career-intelligence')}
             icon={<TrendingUp size={18} className={`opacity-70 ${isElite ? 'text-indigo-400' : 'text-slate-600'}`} />}
             isLocked={!isElite}
+            targetView="career-intelligence"
           />
 
           <NavLink
@@ -143,6 +180,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             onClick={() => setView('rebuild-standalone')}
             icon={<Sparkles size={18} className={`opacity-70 ${isPro ? 'text-blue-500' : 'text-slate-600'}`} />}
             isLocked={!isPro}
+            targetView="rebuild-standalone"
           />
 
           <NavLink
@@ -151,6 +189,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             onClick={() => setView('interview-prep')}
             icon={<MessageSquare size={18} className={`opacity-70 ${isPro ? 'text-violet-400' : 'text-slate-600'}`} />}
             isLocked={!isPro}
+            targetView="interview-prep"
           />
 
           <NavLink
@@ -159,6 +198,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             onClick={() => setView('cover-letter')}
             icon={<FileSearch size={18} className={`opacity-70 ${isPro ? 'text-emerald-400' : 'text-slate-600'}`} />}
             isLocked={!isPro}
+            targetView="cover-letter"
           />
 
           <NavLink
@@ -166,6 +206,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             active={currentView === 'tracker'}
             onClick={() => setView('tracker')}
             icon={<Briefcase size={18} className="opacity-70 text-slate-400" />}
+            targetView="tracker"
           />
 
           <NavLink
@@ -174,6 +215,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             onClick={() => setView('linkedin-optimizer')}
             icon={<Activity size={18} className={`opacity-70 ${isPro ? 'text-sky-400' : 'text-slate-600'}`} />}
             isLocked={!isPro}
+            targetView="linkedin-optimizer"
           />
         </nav>
       </div>
@@ -182,7 +224,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
         {/* Mobile Menu Toggle */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="xl:hidden p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all"
+          className="lg:hidden p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all"
         >
           {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -272,7 +314,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
 
       {/* Mobile Sidebar Navigation */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[150] xl:hidden animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[150] lg:hidden animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
           <div className="absolute top-0 right-0 w-80 h-full bg-[#0F1117] border-l border-[#2D313D] p-6 shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
             <div className="flex items-center justify-between mb-10">
@@ -283,18 +325,18 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
             </div>
 
             <div className="flex flex-col gap-2">
-              <NavLink label="Dashboard" active={currentView === 'dashboard'} onClick={() => { setView('dashboard'); setMobileMenuOpen(false); }} icon={<LayoutDashboard size={18} />} />
+              <NavLink label="Dashboard" active={currentView === 'dashboard'} onClick={() => { setView('dashboard'); setMobileMenuOpen(false); }} icon={<LayoutDashboard size={18} />} targetView="dashboard" />
               {/* Hiding Profile option from mobile sidebar as per user request (don't delete)
-              <NavLink label="Profile" active={currentView === 'profile'} onClick={() => { setView('profile'); setMobileMenuOpen(false); }} icon={<User size={18} />} />
+              <NavLink label="Profile" active={currentView === 'profile'} onClick={() => { setView('profile'); setMobileMenuOpen(false); }} icon={<User size={18} />} targetView="profile" />
               */}
               <div className="h-[1px] bg-white/5 my-2" />
-              <NavLink label="Intelligence" active={currentView === 'full-review'} onClick={() => { setView('full-review'); setMobileMenuOpen(false); }} icon={<ShieldCheck size={18} />} isLocked={!isPro} />
-              <NavLink label="Market Insights" active={currentView === 'career-intelligence'} onClick={() => { setView('career-intelligence'); setMobileMenuOpen(false); }} icon={<TrendingUp size={18} />} isLocked={!isElite} />
-              <NavLink label="Rebuild" active={currentView === 'rebuild-standalone'} onClick={() => { setView('rebuild-standalone'); setMobileMenuOpen(false); }} icon={<Sparkles size={18} />} isLocked={!isPro} />
-              <NavLink label="Interview Prep" active={currentView === 'interview-prep'} onClick={() => { setView('interview-prep'); setMobileMenuOpen(false); }} icon={<MessageSquare size={18} />} isLocked={!isPro} />
-              <NavLink label="Cover Letter" active={currentView === 'cover-letter'} onClick={() => { setView('cover-letter'); setMobileMenuOpen(false); }} icon={<FileSearch size={18} />} isLocked={!isPro} />
-              <NavLink label="Tracker" active={currentView === 'tracker'} onClick={() => { setView('tracker'); setMobileMenuOpen(false); }} icon={<Briefcase size={18} />} />
-              <NavLink label="LinkedIn" active={currentView === 'linkedin-optimizer'} onClick={() => { setView('linkedin-optimizer'); setMobileMenuOpen(false); }} icon={<Activity size={18} />} isLocked={!isPro} />
+              <NavLink label="Intelligence" active={currentView === 'full-review'} onClick={() => { setView('full-review'); setMobileMenuOpen(false); }} icon={<ShieldCheck size={18} />} isLocked={!isPro} targetView="full-review" />
+              <NavLink label="Market Insights" active={currentView === 'career-intelligence'} onClick={() => { setView('career-intelligence'); setMobileMenuOpen(false); }} icon={<TrendingUp size={18} />} isLocked={!isElite} targetView="career-intelligence" />
+              <NavLink label="Rebuild" active={currentView === 'rebuild-standalone'} onClick={() => { setView('rebuild-standalone'); setMobileMenuOpen(false); }} icon={<Sparkles size={18} />} isLocked={!isPro} targetView="rebuild-standalone" />
+              <NavLink label="Interview Prep" active={currentView === 'interview-prep'} onClick={() => { setView('interview-prep'); setMobileMenuOpen(false); }} icon={<MessageSquare size={18} />} isLocked={!isPro} targetView="interview-prep" />
+              <NavLink label="Cover Letter" active={currentView === 'cover-letter'} onClick={() => { setView('cover-letter'); setMobileMenuOpen(false); }} icon={<FileSearch size={18} />} isLocked={!isPro} targetView="cover-letter" />
+              <NavLink label="Tracker" active={currentView === 'tracker'} onClick={() => { setView('tracker'); setMobileMenuOpen(false); }} icon={<Briefcase size={18} />} targetView="tracker" />
+              <NavLink label="LinkedIn" active={currentView === 'linkedin-optimizer'} onClick={() => { setView('linkedin-optimizer'); setMobileMenuOpen(false); }} icon={<Activity size={18} />} isLocked={!isPro} targetView="linkedin-optimizer" />
             </div>
 
             <div className="mt-auto pt-10 border-t border-[#2D313D]">

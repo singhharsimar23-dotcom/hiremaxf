@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Lock, ShieldCheck, ArrowRight, Zap, Info, X, Sparkles, ChevronDown } from 'lucide-react';
 import { UserPlan, AppView } from '../types';
+import { isDisposableOrInvalid } from '../lib/emailValidator';
 
 interface PricingProps {
   setPlan: (p: UserPlan) => void;
@@ -190,6 +191,14 @@ export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan,
 
     if (!user) {
       setView('auth');
+      return;
+    }
+
+    // Secure payment gateway: prevent users with unverified/disposable/fake emails from paying
+    const emailCheck = isDisposableOrInvalid(user.email);
+    if (!emailCheck.valid) {
+      alert(`Account Verification Required:\n\n${emailCheck.reason}\n\nPlease update your profile email to a permanent, valid address in settings before proceeding to purchase.`);
+      setView('settings');
       return;
     }
 

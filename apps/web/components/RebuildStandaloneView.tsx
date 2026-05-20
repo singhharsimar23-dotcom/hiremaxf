@@ -24,15 +24,22 @@ import {
   MapPin,
   Link as LinkIcon,
   AlertCircle,
-  Lock
+  Lock,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+  Trash2
 } from 'lucide-react';
 import { UserPlan, StructuredResume, ResumeGroup, RoleTrack, BackgroundJob, JobType, SignalDelta, JDParsed } from '../types';
+import { usePersistentState, useJobContextPersistence } from '../hooks/usePersistentState';
+import { RebuildProcessingSkeleton } from './Skeletons';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 interface RebuildStandaloneViewProps {
+  userId?: string;
   plan: UserPlan;
   credits: number;
   setCredits: (c: number) => void;
@@ -40,7 +47,7 @@ interface RebuildStandaloneViewProps {
   onUpgrade: () => void;
   history: ResumeGroup[];
   preFilledContext?: { text: string; role: string; track: RoleTrack; gate?: 'SAFE' | 'BORDERLINE' | 'LOCKED' } | null;
-  activeAnalysis?: { targetRole: string; chokepoint: string; chokepointScore: number; atsScore: number } | null;
+  activeAnalysis?: any | null;
   activeJobs: Record<string, BackgroundJob>;
   dispatchJob: (type: JobType, payload: any) => Promise<string>;
 }
@@ -53,83 +60,83 @@ const StructuredResumePreview: React.FC<{ resume: StructuredResume, showDiff?: b
   };
 
   return (
-  <div className="bg-white text-slate-900 p-12 shadow-inner min-h-full font-serif" id="rebuild-preview-target">
-    <header className="mb-8 border-b-2 border-slate-900 pb-6">
-      <h1 className="text-3xl font-extrabold uppercase tracking-tight text-slate-950 mb-3">{resume.contact.full_name}</h1>
-      <div className="flex flex-wrap gap-x-5 gap-y-1 text-[10px] font-bold text-slate-700">
-        {resume.contact.email && <div className="flex items-center gap-1.5"><Mail size={12} /> {resume.contact.email}</div>}
-        {resume.contact.phone && <div className="flex items-center gap-1.5"><Phone size={12} /> {resume.contact.phone}</div>}
-        {resume.contact.location && <div className="flex items-center gap-1.5"><MapPin size={12} /> {resume.contact.location}</div>}
-        {resume.contact.links.map((link, idx) => (
-          <div key={idx} className="flex items-center gap-1.5"><LinkIcon size={12} /> {link}</div>
-        ))}
+    <div className="bg-white text-slate-900 p-12 shadow-inner min-h-full font-serif" id="rebuild-preview-target">
+      <header className="mb-8 border-b-2 border-slate-900 pb-6">
+        <h1 className="text-3xl font-extrabold uppercase tracking-tight text-slate-950 mb-3">{resume.contact.full_name}</h1>
+        <div className="flex flex-wrap gap-x-5 gap-y-1 text-[10px] font-bold text-slate-700">
+          {resume.contact.email && <div className="flex items-center gap-1.5"><Mail size={12} /> {resume.contact.email}</div>}
+          {resume.contact.phone && <div className="flex items-center gap-1.5"><Phone size={12} /> {resume.contact.phone}</div>}
+          {resume.contact.location && <div className="flex items-center gap-1.5"><MapPin size={12} /> {resume.contact.location}</div>}
+          {resume.contact.links.map((link, idx) => (
+            <div key={idx} className="flex items-center gap-1.5"><LinkIcon size={12} /> {link}</div>
+          ))}
+        </div>
+      </header>
+
+      <div className="space-y-8">
+        {resume.summary && (
+          <section>
+            <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-3 text-slate-950 tracking-widest">Professional Summary</h2>
+            <p className={`text-[13px] leading-relaxed transition-colors duration-500 ${isChanged(resume.summary) ? 'bg-blue-50 border-l-2 border-blue-500 pl-2 text-blue-900' : 'text-slate-800'}`}>
+              {resume.summary}
+            </p>
+          </section>
+        )}
+
+        {resume.experience.length > 0 && (
+          <section>
+            <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-4 text-slate-950 tracking-widest">Work Experience</h2>
+            <div className="space-y-6">
+              {resume.experience.map((exp, idx) => (
+                <div key={idx}>
+                  <div className="flex justify-between items-baseline mb-0.5">
+                    <h3 className="text-[14px] font-bold text-slate-950">{exp.title}</h3>
+                    <span className="text-[10px] font-bold text-slate-600">{exp.dates}</span>
+                  </div>
+                  <p className="text-[12px] font-bold text-slate-700 italic mb-2">{exp.organization}</p>
+                  <ul className="list-disc list-outside ml-4 space-y-1">
+                    {exp.bullets.map((bullet, bIdx) => (
+                      <li key={bIdx} className={`text-[12px] leading-snug transition-colors duration-500 ${isChanged(bullet) ? 'bg-green-50 border-l-2 border-green-500 pl-2 text-green-900 list-none -ml-4' : 'text-slate-800'}`}>
+                        {bullet}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {resume.skills && (
+          <section>
+            <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-3 text-slate-950 tracking-widest">Technical Skills</h2>
+            <div className="grid grid-cols-1 gap-1 text-[12px]">
+              {resume.skills.languages.length > 0 && <p><span className="font-bold">Languages:</span> {resume.skills.languages.join(', ')}</p>}
+              {resume.skills.frameworks.length > 0 && <p><span className="font-bold">Frameworks:</span> {resume.skills.frameworks.join(', ')}</p>}
+              {resume.skills.tools.length > 0 && <p><span className="font-bold">Tools:</span> {resume.skills.tools.join(', ')}</p>}
+              {resume.skills.specializations.length > 0 && <p><span className="font-bold">Specializations:</span> {resume.skills.specializations.join(', ')}</p>}
+            </div>
+          </section>
+        )}
+
+        {resume.education.length > 0 && (
+          <section>
+            <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-4 text-slate-950 tracking-widest">Education</h2>
+            <div className="space-y-4">
+              {resume.education.map((edu, idx) => (
+                <div key={idx}>
+                  <div className="flex justify-between items-baseline mb-0.5">
+                    <h3 className="text-[14px] font-bold text-slate-950">{edu.institution}</h3>
+                    <span className="text-[10px] font-bold text-slate-600">{edu.dates}</span>
+                  </div>
+                  <p className="text-[12px] font-bold text-slate-700 italic">{edu.degree}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
-    </header>
-
-    <div className="space-y-8">
-      {resume.summary && (
-        <section>
-          <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-3 text-slate-950 tracking-widest">Professional Summary</h2>
-          <p className={`text-[13px] leading-relaxed transition-colors duration-500 ${isChanged(resume.summary) ? 'bg-blue-50 border-l-2 border-blue-500 pl-2 text-blue-900' : 'text-slate-800'}`}>
-            {resume.summary}
-          </p>
-        </section>
-      )}
-
-      {resume.experience.length > 0 && (
-        <section>
-          <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-4 text-slate-950 tracking-widest">Work Experience</h2>
-          <div className="space-y-6">
-            {resume.experience.map((exp, idx) => (
-              <div key={idx}>
-                <div className="flex justify-between items-baseline mb-0.5">
-                  <h3 className="text-[14px] font-bold text-slate-950">{exp.title}</h3>
-                  <span className="text-[10px] font-bold text-slate-600">{exp.dates}</span>
-                </div>
-                <p className="text-[12px] font-bold text-slate-700 italic mb-2">{exp.organization}</p>
-                <ul className="list-disc list-outside ml-4 space-y-1">
-                  {exp.bullets.map((bullet, bIdx) => (
-                    <li key={bIdx} className={`text-[12px] leading-snug transition-colors duration-500 ${isChanged(bullet) ? 'bg-green-50 border-l-2 border-green-500 pl-2 text-green-900 list-none -ml-4' : 'text-slate-800'}`}>
-                      {bullet}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {resume.skills && (
-        <section>
-          <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-3 text-slate-950 tracking-widest">Technical Skills</h2>
-          <div className="grid grid-cols-1 gap-1 text-[12px]">
-            {resume.skills.languages.length > 0 && <p><span className="font-bold">Languages:</span> {resume.skills.languages.join(', ')}</p>}
-            {resume.skills.frameworks.length > 0 && <p><span className="font-bold">Frameworks:</span> {resume.skills.frameworks.join(', ')}</p>}
-            {resume.skills.tools.length > 0 && <p><span className="font-bold">Tools:</span> {resume.skills.tools.join(', ')}</p>}
-            {resume.skills.specializations.length > 0 && <p><span className="font-bold">Specializations:</span> {resume.skills.specializations.join(', ')}</p>}
-          </div>
-        </section>
-      )}
-
-      {resume.education.length > 0 && (
-        <section>
-          <h2 className="text-[11px] font-extrabold uppercase border-b border-slate-200 pb-1 mb-4 text-slate-950 tracking-widest">Education</h2>
-          <div className="space-y-4">
-            {resume.education.map((edu, idx) => (
-              <div key={idx}>
-                <div className="flex justify-between items-baseline mb-0.5">
-                  <h3 className="text-[14px] font-bold text-slate-950">{edu.institution}</h3>
-                  <span className="text-[10px] font-bold text-slate-600">{edu.dates}</span>
-                </div>
-                <p className="text-[12px] font-bold text-slate-700 italic">{edu.degree}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
-  </div>
   );
 }
 
@@ -138,8 +145,8 @@ interface ChangeEntry { type: string; section: string; company?: string; preview
 
 function computeChangeLog(originalText: string, rebuilt: StructuredResume): ChangeEntry[] {
   const changes: ChangeEntry[] = [];
-  const OWNERSHIP_VERBS = ['led','architected','designed','owned','drove','spearheaded','built','founded','launched','created','directed'];
-  const WEAK_VERBS = ['helped','assisted','contributed','worked on','was responsible for','participated','supported','involved'];
+  const OWNERSHIP_VERBS = ['led', 'architected', 'designed', 'owned', 'drove', 'spearheaded', 'built', 'founded', 'launched', 'created', 'directed'];
+  const WEAK_VERBS = ['helped', 'assisted', 'contributed', 'worked on', 'was responsible for', 'participated', 'supported', 'involved'];
 
   rebuilt.experience?.forEach(exp => {
     exp.bullets?.forEach(bullet => {
@@ -170,35 +177,36 @@ function computeChangeLog(originalText: string, rebuilt: StructuredResume): Chan
 }
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  METRIC_ADDED:     { label: 'Metric Added',   color: 'text-green-400',  bg: 'bg-green-500/5',  border: 'border-green-500/20' },
-  OWNERSHIP_SIGNAL: { label: 'Verb Upgraded',  color: 'text-blue-400',   bg: 'bg-blue-500/5',   border: 'border-blue-500/20' },
-  KEYWORDS_INJECTED:{ label: 'Keywords In',    color: 'text-indigo-400', bg: 'bg-indigo-500/5', border: 'border-indigo-500/20' },
-  SUMMARY_REBUILT:  { label: 'Summary Fixed',  color: 'text-amber-400',  bg: 'bg-amber-500/5',  border: 'border-amber-500/20' },
+  METRIC_ADDED: { label: 'Metric Added', color: 'text-green-400', bg: 'bg-green-500/5', border: 'border-green-500/20' },
+  OWNERSHIP_SIGNAL: { label: 'Verb Upgraded', color: 'text-blue-400', bg: 'bg-blue-500/5', border: 'border-blue-500/20' },
+  KEYWORDS_INJECTED: { label: 'Keywords In', color: 'text-indigo-400', bg: 'bg-indigo-500/5', border: 'border-indigo-500/20' },
+  SUMMARY_REBUILT: { label: 'Summary Fixed', color: 'text-amber-400', bg: 'bg-amber-500/5', border: 'border-amber-500/20' },
 };
 
 const countOwnershipVerbs = (text: string) =>
-  ['led','architected','designed','owned','drove','spearheaded','built','launched','created','directed']
-  .reduce((count, v) => count + (text.toLowerCase().split(v).length - 1), 0);
+  ['led', 'architected', 'designed', 'owned', 'drove', 'spearheaded', 'built', 'launched', 'created', 'directed']
+    .reduce((count, v) => count + (text.toLowerCase().split(v).length - 1), 0);
 
 const countMetrics = (text: string) =>
   (text.match(/\d+[%$]?|\$[\d,]+|[\d,]+\+/g) || []).length;
 
 const NEXT_STEPS: Record<string, string[]> = {
-  BIG_TECH:          ['Run ATS check against your target job posting','Verify all company names are spelled exactly right','Submit .docx not PDF to Workday/Taleo systems'],
-  STARTUP_ENG:       ['Lead with the 0-to-1 project in your summary','Remove any enterprise bureaucracy language','Add GitHub link if missing'],
-  AI_PRODUCTION:     ['Verify all model names are exact (GPT-4, LLaMA-3, not generic terms)','Add inference speed/cost metrics to ML bullets','Include Hugging Face or arXiv links'],
-  RESEARCH_ACADEMIC: ['Lead with publications and citation counts','Include h-index or Google Scholar profile link','Highlight theoretical novelty over implementation'],
-  FINTECH_INFRA:     ['Quantify latency/uptime SLA improvements','Highlight mission-critical system scope','Add compliance frameworks handled (SOC2, PCI-DSS)'],
+  BIG_TECH: ['Run ATS check against your target job posting', 'Verify all company names are spelled exactly right', 'Submit .docx not PDF to Workday/Taleo systems'],
+  STARTUP_ENG: ['Lead with the 0-to-1 project in your summary', 'Remove any enterprise bureaucracy language', 'Add GitHub link if missing'],
+  AI_PRODUCTION: ['Verify all model names are exact (GPT-4, LLaMA-3, not generic terms)', 'Add inference speed/cost metrics to ML bullets', 'Include Hugging Face or arXiv links'],
+  RESEARCH_ACADEMIC: ['Lead with publications and citation counts', 'Include h-index or Google Scholar profile link', 'Highlight theoretical novelty over implementation'],
+  FINTECH_INFRA: ['Quantify latency/uptime SLA improvements', 'Highlight mission-critical system scope', 'Add compliance frameworks handled (SOC2, PCI-DSS)'],
 };
 
-export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ plan, credits, setCredits, onRebuildSuccess, onUpgrade, history, preFilledContext, activeAnalysis, activeJobs, dispatchJob }) => {
+export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = (props) => {
+  const { plan, credits, setCredits, onRebuildSuccess, onUpgrade, history, preFilledContext, activeAnalysis, activeJobs, dispatchJob, userId } = props;
   const [step, setStep] = useState<'form' | 'processing' | 'result' | 'quota_error'>('form');
   const [loading, setLoading] = useState(false);
-  const [resumeText, setResumeText] = useState('');
+  const [resumeText, setResumeText, clearResumeText] = usePersistentState('rebuild_resume', '', props.userId);
   const [originalText, setOriginalText] = useState(''); // stored at dispatch time for diff view
   const [selectedResumeId, setSelectedResumeId] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
-  const [roleTrack, setRoleTrack] = useState<RoleTrack>('BIG_TECH');
+  const [roleTrack, setRoleTrack] = usePersistentState<RoleTrack>('rebuild_track', 'BIG_TECH', props.userId);
   const [rebuiltResume, setRebuiltResume] = useState<StructuredResume | null>(null);
   const [signalDelta, setSignalDelta] = useState<SignalDelta | null>(null);
   const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
@@ -213,6 +221,7 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
   const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [changeLog, setChangeLog] = useState<ChangeEntry[]>([]);
+  const [isEditorExpanded, setIsEditorExpanded] = useState(false);
 
   const REBUILD_STAGES = [
     { label: 'Parsing source document', cumulative: 8000 },
@@ -225,19 +234,26 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = usePersistentState('rebuild_form', {
     role: '',
     industry: ''
-  });
+  }, props.userId);
+
+  const { save: saveJobCtx, restore: restoreJobCtx, clear: clearJobCtx } = useJobContextPersistence(props.userId);
 
   const [trackingJobId, setTrackingJobId] = useState<string | null>(null);
 
   useEffect(() => {
+    const ctx = restoreJobCtx();
     const activeJob = Object.values(activeJobs).find(j => j.type === 'REBUILD' && j.status === 'RUNNING');
     if (activeJob && !trackingJobId) {
       setTrackingJobId(activeJob.id);
       setStep('processing');
-      if (activeJob.payload?.role) {
+      if (ctx) {
+        setResumeText(ctx.resumeText);
+        setFormData(prev => ({ ...prev, role: ctx.role }));
+        setRoleTrack(ctx.roleTrack as RoleTrack);
+      } else if (activeJob.payload?.role) {
         setFormData(prev => ({ ...prev, role: activeJob.payload.role }));
       }
     }
@@ -286,6 +302,7 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
             role: job.payload?.role || formData.role || "Professional",
             label: `${job.payload?.role || "Rebuild"} @ ${job.payload?.roleTrack || roleTrack}`
           });
+          clearJobCtx();
           setStep('result');
           setTrackingJobId(null);
         } else {
@@ -303,8 +320,9 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
       }
     }
   }, [activeJobs, trackingJobId]);
+
   useEffect(() => {
-    if (preFilledContext) {
+    if (preFilledContext && !resumeText) {
       setResumeText(preFilledContext.text);
       setFormData({ role: preFilledContext.role, industry: '' });
       setRoleTrack(preFilledContext.track);
@@ -318,19 +336,31 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
   // Shared intelligence: auto-fill from analysis chokepoint
   useEffect(() => {
     if (activeAnalysis && !preFilledContext) {
-      setFormData(prev => ({ ...prev, role: activeAnalysis.targetRole }));
+      setFormData(prev => ({ ...prev, role: activeAnalysis.targetRole || activeAnalysis.role }));
     }
   }, [activeAnalysis]);
 
-  const isPro = plan !== 'Starter';
+  const isPro = plan === 'Career Pro' || plan === 'Career Elite' || plan === 'Automation';
   const recentResumes = history.slice(0, 5);
 
   const selectSavedResume = (group: ResumeGroup) => {
     const version = group.versions.find(v => v.type === 'original') || group.versions[0];
     if (version && version.data) {
       const contact = version.data.contact || {};
-      const exp = (version.data.experience || []).map((e: any) => `${e.title} at ${e.organization}: ${e.bullets?.join(' ')}`).join('\n');
-      const text = `${contact.full_name || ''}\n${version.data.summary || ''}\n${exp}`;
+      const exp = (version.data.experience || []).map((e: any) => {
+        const bulletsText = (e.bullets || []).map((b: string) => `• ${b}`).join('\n');
+        return `${e.title} at ${e.organization} (${e.dates || ''}):\n${bulletsText}`;
+      }).join('\n\n');
+      const edu = (version.data.education || []).map((e: any) => `${e.degree || ''} from ${e.institution || ''} (${e.dates || ''})`).join('\n');
+      const proj = (version.data.projects || []).map((p: any) => `${p.name || ''}: ${p.description || ''}${p.impact ? ` (Impact: ${p.impact})` : ''}`).join('\n');
+      const skills = version.data.skills ? [
+        ...(version.data.skills.languages || []),
+        ...(version.data.skills.frameworks || []),
+        ...(version.data.skills.tools || []),
+        ...(version.data.skills.specializations || [])
+      ].join(', ') : '';
+
+      const text = `NAME: ${contact.full_name || ''}\nEMAIL: ${contact.email || ''}\nPHONE: ${contact.phone || ''}\nLOCATION: ${contact.location || ''}\n\nSUMMARY:\n${version.data.summary || ''}\n\nEXPERIENCE:\n${exp}\n\nEDUCATION:\n${edu}\n\nPROJECTS:\n${proj}\n\nSKILLS:\n${skills}`.trim();
       setResumeText(text);
       setSelectedResumeId(group.id);
     }
@@ -380,38 +410,25 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     setStep('processing');
     setProcessingStartedAt(Date.now());
 
-    const attemptDispatch = async (attempt: number): Promise<string> => {
-      try {
-        setLoading(true);
-        setErrorFeedback(null);
-        
-        const payload: any = {
-          resumeText: textToUse,
-          role: roleToUse,
-          track: trackToUse
-        };
-        
-        if (targetJD) payload.targetJD = targetJD;
-        
-        const jobId = await dispatchJob('REBUILD', payload);
-        return jobId;
-      } catch (err) {
-        if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
-          setRetryCount(attempt + 1);
-          return attemptDispatch(attempt + 1);
-        }
-        throw err;
-      }
-    };
-
     try {
-      const jobId = await attemptDispatch(0);
+      setLoading(true);
+      setErrorFeedback(null);
+      saveJobCtx({ resumeText: textToUse, role: roleToUse, roleTrack: trackToUse, jobId: '' });
+      const jobId = await dispatchJob('REBUILD', {
+        role: roleToUse,
+        roleTrack: trackToUse,
+        sourceText: textToUse,
+        resume_id: selectedResumeId || 'NEW',
+        targetJD
+      });
+      saveJobCtx({ resumeText: textToUse, role: roleToUse, roleTrack: trackToUse, jobId });
       setTrackingJobId(jobId);
     } catch (err) {
       // Final failure — return to form with data preserved
       setErrorFeedback('Connection issue. Your resume data is saved — click Execute to try again.');
       setStep('form');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -488,66 +505,15 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
     );
   }
 
-  if (step === 'processing') {
-    const currentStage = REBUILD_STAGES[processingStageIdx];
-    const progressPct = currentStage ? ((processingStageIdx + 1) / REBUILD_STAGES.length) * 100 : 95;
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] gap-10 px-10">
-        <div className="w-full max-w-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-2xl font-black text-white uppercase tracking-tight">Re-Architecting Profile</h3>
-            {retryCount > 0 && (
-              <span className="text-amber-400 text-[9px] font-black uppercase tracking-widest border border-amber-500/20 px-3 py-1 rounded-full">
-                Retry {retryCount}/2
-              </span>
-            )}
-          </div>
-
-          {/* Stage progress bar */}
-          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden mb-8">
-            <div
-              className="h-full bg-blue-500 rounded-full transition-all duration-1000"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-
-          {/* Stage list */}
-          <div className="space-y-4">
-            {REBUILD_STAGES.map((stage, i) => {
-              const isDone = i < processingStageIdx;
-              const isActive = i === processingStageIdx;
-              return (
-                <div key={i} className={`flex items-center gap-4 transition-all duration-500 ${
-                  isDone ? 'opacity-40' : isActive ? 'opacity-100' : 'opacity-20'
-                }`}>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
-                    isDone ? 'bg-green-500/20 text-green-400' :
-                    isActive ? 'bg-blue-500/20 text-blue-400' :
-                    'bg-white/5 text-slate-700'
-                  }`}>
-                    {isDone ? <CheckCircle2 size={12} /> : isActive ? <Loader2 size={12} className="animate-spin" /> : <div className="w-1.5 h-1.5 rounded-full bg-current" />}
-                  </div>
-                  <p className={`text-sm font-bold uppercase tracking-widest ${
-                    isActive ? 'text-white' : 'text-slate-600'
-                  }`}>{stage.label}</p>
-                  {isDone && <CheckCircle2 size={12} className="text-green-400 ml-auto" />}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em]">Execution continues in background · Do not close this tab</p>
-      </div>
-    );
-  }
+  if (step === 'processing') return <RebuildProcessingSkeleton role={formData.role} track={roleTrack} />;
 
   if (step === 'result' && rebuiltResume) {
     // changeLog is now a real state var (was previously a useState inside this conditional — hooks violation)
     const rebuiltText = JSON.stringify(rebuiltResume);
     const beforeOwnership = countOwnershipVerbs(originalText || resumeText);
-    const afterOwnership  = countOwnershipVerbs(rebuiltText);
-    const beforeMetrics   = countMetrics(originalText || resumeText);
-    const afterMetrics    = countMetrics(rebuiltText);
+    const afterOwnership = countOwnershipVerbs(rebuiltText);
+    const beforeMetrics = countMetrics(originalText || resumeText);
+    const afterMetrics = countMetrics(rebuiltText);
 
     const allBullets = rebuiltResume.experience?.flatMap(e => e.bullets ?? []) ?? [];
     const strongOpener = allBullets.length > 0 && /^[A-Z][a-z]+ed|^[A-Z][a-z]+s\b|^[A-Z][a-z]+ing\b/.test(allBullets[0]);
@@ -579,9 +545,8 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
             {/* Diff view toggle */}
             <button
               onClick={() => setShowDiff(d => !d)}
-              className={`px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${
-                showDiff ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' : 'border-white/5 text-slate-500 hover:text-white'
-              }`}
+              className={`px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-2 ${showDiff ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' : 'border-white/5 text-slate-500 hover:text-white'
+                }`}
             >
               <Eye size={13} /> {showDiff ? 'Hide Diff' : 'Show Diff'}
             </button>
@@ -678,9 +643,9 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
               <p className="text-white font-black uppercase text-[10px] tracking-widest mb-5">F-Pattern Readiness</p>
               <div className="space-y-3">
                 {[
-                  { pass: strongOpener,         label: 'Strong opening verbs',    tip: 'First bullet must start with an action verb' },
-                  { pass: quantifiedPct > 0.5,  label: 'Quantified bullets >50%', tip: `${Math.round(quantifiedPct * 100)}% of bullets contain numbers` },
-                  { pass: true,                  label: 'Single-column safe',      tip: 'ATS-compliant single-column layout confirmed' },
+                  { pass: strongOpener, label: 'Strong opening verbs', tip: 'First bullet must start with an action verb' },
+                  { pass: quantifiedPct > 0.5, label: 'Quantified bullets >50%', tip: `${Math.round(quantifiedPct * 100)}% of bullets contain numbers` },
+                  { pass: true, label: 'Single-column safe', tip: 'ATS-compliant single-column layout confirmed' },
                 ].map((item, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${item.pass ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
@@ -741,9 +706,9 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
           <AlertCircle size={18} className="text-blue-500 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-blue-400 font-black text-[10px] uppercase tracking-widest mb-1">Rebuild Target from Analysis</p>
-            <p className="text-white font-bold text-sm">{activeAnalysis.targetRole}</p>
+            <p className="text-white font-bold text-sm">{activeAnalysis.targetRole || activeAnalysis.role}</p>
             <p className="text-slate-500 text-[11px] mt-1">
-              Critical chokepoint: <span className="text-red-400 font-black">{activeAnalysis.chokepoint}</span> ({activeAnalysis.chokepointScore}%) — rebuilt resume will prioritize this signal.
+              Critical chokepoint: <span className="text-red-400 font-black">{activeAnalysis.chokepoint || activeAnalysis.chokepointCategory}</span> ({activeAnalysis.chokepointScore || activeAnalysis.overallScore}%) — rebuilt resume will prioritize this signal.
             </p>
           </div>
         </div>
@@ -785,24 +750,33 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
                     </label>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {recentResumes.map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => selectSavedResume(r)}
-                        className={`flex items-center gap-4 p-5 rounded-2xl border backdrop-blur-md transition-all duration-300 text-left hover:-translate-y-0.5 active:translate-y-0 ${selectedResumeId === r.id ? 'bg-gradient-to-r from-blue-600/15 to-indigo-600/15 border-blue-500/80 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-slate-950/40 border-white/5 hover:border-white/10 hover:bg-slate-900/40'}`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${selectedResumeId === r.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-slate-900 text-slate-550'}`}>
-                          <FileIcon size={18} />
-                        </div>
-                        <div className="flex-1 truncate">
-                          <p className="text-white font-bold text-xs truncate uppercase tracking-widest">{r.name}</p>
-                          <p className="text-slate-550 text-[9px] font-black uppercase tracking-widest mt-1">
-                            {r.versions && r.versions.length > 0 && r.versions[0] ? new Date(r.versions[0].createdAt).toLocaleDateString() : 'No date'}
-                          </p>
-                        </div>
-                        {selectedResumeId === r.id && <CheckCircle2 size={16} className="text-blue-500" />}
-                      </button>
-                    ))}
+                    {recentResumes.map((r) => {
+                      const rawDate = r.versions?.[0]?.createdAt || (r.versions?.[0] as any)?.created_at || (r as any)?.created_at || (r as any)?.updated_at;
+                      const parsedDate = rawDate ? new Date(rawDate) : null;
+                      const cleanDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate.toLocaleDateString() : 'No date';
+
+                      const contactName = r.versions?.[0]?.data?.contact?.full_name || 'Resume Source';
+                      const cleanName = r.name && !r.name.includes('undefined') ? r.name : contactName;
+
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => selectSavedResume(r)}
+                          className={`flex items-center gap-4 p-5 rounded-2xl border backdrop-blur-md transition-all duration-300 text-left hover:-translate-y-0.5 active:translate-y-0 ${selectedResumeId === r.id ? 'bg-gradient-to-r from-blue-600/15 to-indigo-600/15 border-blue-500/80 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-slate-950/40 border-white/5 hover:border-white/10 hover:bg-slate-900/40'}`}
+                        >
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${selectedResumeId === r.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-slate-900 text-slate-550'}`}>
+                            <FileIcon size={18} />
+                          </div>
+                          <div className="flex-1 truncate">
+                            <p className="text-white font-bold text-xs truncate uppercase tracking-widest">{cleanName}</p>
+                            <p className="text-slate-550 text-[9px] font-black uppercase tracking-widest mt-1">
+                              {cleanDate}
+                            </p>
+                          </div>
+                          {selectedResumeId === r.id && <CheckCircle2 size={16} className="text-blue-500" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -903,6 +877,70 @@ export const RebuildStandaloneView: React.FC<RebuildStandaloneViewProps> = ({ pl
                     <input type="file" ref={fileInputRef} className="hidden" onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} />
                   </button>
                 </div>
+
+                {/* Parsing skeleton indicator */}
+                {isParsing && (
+                  <div className="bg-blue-500/5 border border-blue-500/20 rounded-2xl p-6 flex items-center gap-4 animate-pulse">
+                    <Loader2 className="animate-spin text-blue-450" size={20} />
+                    <div>
+                      <p className="text-white font-bold text-xs uppercase tracking-wider">Parsing Document...</p>
+                      <p className="text-slate-500 text-[10px] font-medium mt-0.5">Extracting experience, projects, and target credentials</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Resume Loaded Confirmation & Collapsible Text Inspector */}
+                {resumeText && !isParsing && (
+                  <div className="bg-gradient-to-r from-blue-500/5 to-indigo-500/5 border border-blue-500/20 rounded-2xl p-6 space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400">
+                          <CheckCircle2 size={16} className="animate-pulse" />
+                        </div>
+                        <div>
+                          <p className="text-white font-bold text-xs uppercase tracking-wider">Active Resume Loaded</p>
+                          <p className="text-slate-400 text-[10px] font-medium mt-0.5">
+                            {resumeText.split(/\s+/).filter(Boolean).length} words • {resumeText.length} characters
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditorExpanded(!isEditorExpanded)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-350 hover:text-white transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer"
+                      >
+                        {isEditorExpanded ? 'Hide Draft' : 'Inspect & Edit'}
+                        {isEditorExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                    </div>
+
+                    {isEditorExpanded && (
+                      <div className="space-y-3 pt-4 border-t border-white/5 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Raw Source Text Editor</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm("Are you sure you want to clear the active resume?")) {
+                                clearResumeText();
+                                setSelectedResumeId('');
+                              }
+                            }}
+                            className="flex items-center gap-1.5 text-[9px] font-black text-red-400 hover:text-red-300 uppercase tracking-widest transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={10} /> Clear Source
+                          </button>
+                        </div>
+                        <textarea
+                          value={resumeText}
+                          onChange={(e) => setResumeText(e.target.value)}
+                          className="w-full h-64 bg-slate-950/80 border border-white/5 rounded-xl p-4 text-slate-300 outline-none focus:border-blue-500/50 focus:shadow-[0_0_20px_rgba(59,130,246,0.1)] text-xs font-mono leading-relaxed custom-scrollbar resize-none"
+                          placeholder="Paste or edit raw resume text here..."
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <button

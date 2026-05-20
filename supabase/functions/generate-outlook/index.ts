@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenerativeAI } from 'npm:@google/generative-ai'
 
+import { checkPlanGate } from '../_shared/plan-gate.ts'
+
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -17,24 +19,9 @@ export async function generateOutlook(req: Request) {
     )
 
     try {
-        // 1. IDENTITY ANCHORING (SEC-007)
-        const authHeader = req.headers.get('Authorization')
-        if (!authHeader) throw new Error("Missing Authorization header")
-
-        const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
-        if (authError || !user) throw new Error("Invalid or expired session")
-
-        // 2. PLAN GATING (SEC-GATING)
-        const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('plan')
-            .eq('id', user.id)
-            .single()
-
-        if (profileError || !profile) throw new Error("User profile not found")
-        if (profile.plan !== 'Career Elite' && profile.plan !== 'Automation') {
-            throw new Error(`UNAUTHORIZED_ACCESS: Institutional Market Commands are restricted to Elite users. (Your plan: ${profile.plan || 'Starter'})`)
-        }
+        const gateResult = await checkPlanGate(req, ['Career Elite', 'Automation'])
+        if (gateResult instanceof Response) return gateResult
+        const { user } = gateResult
 
         const body = await req.json()
         const { role, geography, expBand, run_id } = body

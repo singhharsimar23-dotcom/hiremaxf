@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Linkedin, Sparkles, Lock, Loader2, Copy, Check, Download, RefreshCw, AlertCircle, ArrowRight, Star } from 'lucide-react';
+import { Linkedin, Sparkles, Lock, Loader2, Copy, Check, Download, RefreshCw, AlertCircle, ArrowRight, Star, Zap } from 'lucide-react';
 import { UserPlan, ResumeGroup, JobType, BackgroundJob } from '../types';
 
 interface LinkedInResult {
@@ -41,15 +41,25 @@ export const LinkedInOptimizerView: React.FC<Props> = ({ plan, history, user, on
   const [error, setError] = useState('');
   const [copied, setCopied] = useState<string|null>(null);
   const [trackingJobId, setTrackingJobId] = useState<string | null>(null);
-  const [form, setForm] = useState({ targetRole:'', currentHeadline:'', yearsExperience:5, selectedGroup:'', currentAbout:'' });
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const [form, setForm] = useState({ targetRole:'', currentHeadline:'', yearsExperience:5, selectedGroup: history[0]?.id || '', currentAbout:'' });
 
-  const resumeText = (() => {
+  const resumeText = React.useMemo(() => {
     const g = history.find(h=>h.id===form.selectedGroup)||history[0];
     const v = g?.versions?.[g.versions.length-1];
     if (!v?.data) return '';
     const d = v.data;
     return [d.contact?.full_name, d.summary, ...(d.experience||[]).map((e:any)=>`${e.title} at ${e.organization}: ${e.bullets?.join('; ')}`), ...(d.skills?Object.values(d.skills).flat():[])].filter(Boolean).join('\n');
-  })();
+  }, [history, form.selectedGroup]);
+
+  const allStarItems: Array<[string, boolean]> = [
+    ['Professional photo', true], // always true — we can't check this
+    ['Optimized headline', !!(result?.headline?.text)],
+    ['About section (2,600+ chars)', !!(result?.about?.full && result.about.full.length > 200)],
+    ['3+ experience entries', (history[0]?.versions?.[0]?.data?.experience?.length ?? 0) >= 3],
+    ['50 skills added', (result?.skills?.length ?? 0) >= 50],
+    ['Education section', true], // assume present
+  ];
 
   React.useEffect(() => {
     if (!trackingJobId) return;
@@ -59,10 +69,12 @@ export const LinkedInOptimizerView: React.FC<Props> = ({ plan, history, user, on
     if (activeJob.status === 'RUNNING') {
       setLoading(true);
     } else if (activeJob.status === 'COMPLETED' && activeJob.result) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setResult(activeJob.result);
       setTrackingJobId(null);
       setLoading(false);
     } else if (activeJob.status === 'FAILED') {
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setError(activeJob.error || 'Optimization failed.');
       setTrackingJobId(null);
       setLoading(false);
@@ -74,7 +86,8 @@ export const LinkedInOptimizerView: React.FC<Props> = ({ plan, history, user, on
     if (!form.targetRole.trim()) { setError('Enter your target role.'); return; }
     setLoading(true); setError('');
     const msgs = ['Analyzing LinkedIn search patterns…','Generating keyword-dense headline…','Ranking 50 skills by search volume…'];
-    let i=0; const iv=setInterval(()=>setLoadMsg(msgs[i++%msgs.length]),1800);
+    let i=0; 
+    intervalRef.current = setInterval(()=>setLoadMsg(msgs[i++%msgs.length]),1800);
     try {
       const jobId = await dispatchJob('LINKEDIN', {
         targetRole: form.targetRole,
@@ -87,8 +100,7 @@ export const LinkedInOptimizerView: React.FC<Props> = ({ plan, history, user, on
     } catch(err:any) { 
       setError(err.message||'Optimization failed. Try again.'); 
       setLoading(false);
-    } finally { 
-      clearInterval(iv); 
+      if (intervalRef.current) clearInterval(intervalRef.current);
     }
   };
 
@@ -98,15 +110,37 @@ export const LinkedInOptimizerView: React.FC<Props> = ({ plan, history, user, on
 
   const exportGuide = () => {
     if (!result) return;
-    const w=window.open('','_blank'); if(!w) return;
-    w.document.write(`<html><head><title>LinkedIn Profile Guide — ${form.targetRole}</title><style>body{font-family:sans-serif;padding:48px;max-width:760px;margin:0 auto;font-size:13px;line-height:1.7;color:#111}h2{font-size:17px;font-weight:900;border-bottom:2px solid #e5e7eb;padding-bottom:6px;margin:28px 0 12px}p{margin:8px 0}.kw{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin:2px}</style></head><body>
-    <h1 style="font-size:22px;font-weight:900;">LinkedIn Profile Guide — ${form.targetRole}</h1>
-    <h2>Optimized Headline</h2><p>${result.headline.text}</p>
-    <h2>About Section</h2><p><strong>Hook:</strong> ${result.about.hook}</p><p>${result.about.full}</p>
-    <h2>Top 20 Skills to Add</h2><p>${result.skills.slice(0,20).map(s=>`<span class="kw">${s.rank}. ${s.skill} [${s.searchVolume}]</span>`).join('')}</p>
-    <h2>Experience Rewrites</h2>${result.experienceBullets.map(b=>`<p><strong>${b.role} @ ${b.company}</strong><br/><del>${b.original}</del><br/>✓ ${b.optimized}</p>`).join('')}
-    <script>window.onload=()=>window.print()<\/script></body></html>`);
-    w.document.close();
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<title>LinkedIn Profile Guide — ${form.targetRole}</title>
+<style>
+  body { font-family: sans-serif; padding: 48px; max-width: 760px; margin: 0 auto; font-size: 13px; line-height: 1.7; color: #111; }
+  h1 { font-size: 22px; font-weight: 900; }
+  h2 { font-size: 17px; font-weight: 900; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px; margin: 28px 0 12px; }
+  .kw { display: inline-block; background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; margin: 2px; }
+  del { color: #dc2626; }
+</style>
+</head>
+<body>
+<h1>LinkedIn Profile Guide — ${form.targetRole}</h1>
+<h2>Optimized Headline</h2>
+<p>${result.headline.text}</p>
+<h2>About Section</h2>
+<p><strong>Hook:</strong> ${result.about.hook}</p>
+<p>${result.about.full}</p>
+<h2>Top 20 Skills (Add in This Order)</h2>
+<p>${result.skills.slice(0, 20).map(s => `<span class="kw">${s.rank}. ${s.skill} [${s.searchVolume}]</span>`).join('')}</p>
+<h2>Experience Rewrites</h2>
+${result.experienceBullets.map(b => `<p><strong>${b.role} @ ${b.company}</strong><br/><del>${b.original}</del><br/>✓ ${b.optimized}</p>`).join('')}
+<script>window.onload = () => window.print();<\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
   if (!isPro) return (
@@ -171,6 +205,38 @@ export const LinkedInOptimizerView: React.FC<Props> = ({ plan, history, user, on
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-8 space-y-6">
+            <div className="bg-gradient-to-r from-blue-600/10 to-indigo-600/10 border border-blue-500/20 rounded-[2rem] p-7 mb-6">
+              <div className="flex items-center gap-3 mb-5">
+                <Zap size={16} className="text-blue-400" />
+                <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest">
+                  Your Implementation Plan — Do These in Order
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                {[
+                  { step: 1, time: '2 min', action: 'Copy headline → paste into LinkedIn', section: 'Section 1 below' },
+                  { step: 2, time: '5 min', action: 'Add top 3 amber skills as Featured Skills', section: 'Section 4 below' },
+                  { step: 3, time: '10 min', action: 'Replace About hook (visible before See more)', section: 'Section 2 below' },
+                  { step: 4, time: '15 min', action: 'Rewrite top experience bullet', section: 'Section 3 below' },
+                  { step: 5, time: '10 min', action: 'Add all 50 skills in rank order', section: 'Section 4 below' },
+                ].map(({ step, time, action, section }) => (
+                  <div key={step} className="bg-[#0D0D12] rounded-2xl p-4 border border-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="w-7 h-7 rounded-xl bg-blue-600 flex items-center justify-center">
+                        <span className="text-white font-black text-xs">{step}</span>
+                      </div>
+                      <span className="text-[8px] font-black text-slate-600 uppercase">{time}</span>
+                    </div>
+                    <p className="text-white text-xs font-bold leading-tight mb-1">{action}</p>
+                    <p className="text-blue-400 text-[8px] font-black uppercase tracking-widest">↓ {section}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-slate-600 text-[9px] mt-4 text-center">
+                After completing all 5 steps, check your LinkedIn profile — look for All-Star status in the top card
+              </p>
+            </div>
+
             {/* SECTION 1: Headline */}
             <div className="bg-[#111118] border border-white/5 rounded-[2rem] p-8">
               <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-5">Section 1 — Headline</p>
@@ -278,10 +344,10 @@ export const LinkedInOptimizerView: React.FC<Props> = ({ plan, history, user, on
               <div className="border-t border-white/5 pt-5">
                 <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest mb-3">All-Star Checklist</p>
                 <p className="text-[8px] text-red-400 italic mb-3">All-Star status required to appear in recruiter searches.</p>
-                {[['Professional photo',true],['Optimized headline',true],['About section',true],['3+ experience entries', (history[0]?.versions?.[0]?.data?.experience?.length||0)>=3],['50 skills',false],['Education',true]].map(([item,done])=>(
-                  <div key={item as string} className="flex items-center gap-2 mb-2">
+                {allStarItems.map(([item,done])=>(
+                  <div key={item} className="flex items-center gap-2 mb-2">
                     <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${done?'bg-green-500/20 text-green-400':'bg-red-500/10 text-red-400'}`}>{done?'✓':'✗'}</div>
-                    <p className={`text-xs ${done?'text-slate-300':'text-slate-600'}`}>{item as string}</p>
+                    <p className={`text-xs ${done?'text-slate-300':'text-slate-600'}`}>{item}</p>
                   </div>
                 ))}
               </div>

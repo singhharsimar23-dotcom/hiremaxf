@@ -131,11 +131,15 @@ export const RebuiltCompareView: React.FC<RebuiltCompareViewProps> = ({ analysis
   const analysis = analysisId ? history[analysisId] : null;
 
   useEffect(() => {
+    let active = true;
     const performRebuild = async () => {
-      if (!analysis) {
+      if (!analysisId || !analysis) {
         setError("Please run a resume review before rebuilding.");
         return;
       }
+
+      // Prevent execution if we already have matching rebuild data, or if we are already loading
+      if (data && data.analysisId === analysisId) return;
 
       setLoading(true);
       setError(null);
@@ -180,7 +184,17 @@ export const RebuiltCompareView: React.FC<RebuiltCompareViewProps> = ({ analysis
         if (genError) throw genError;
         if (genData?.error) throw new Error(genData.error);
 
-        const raw = (genData?.text ?? '').replace(/```json/g, '').replace(/```/g, '').trim();
+        if (!active) return;
+
+        let raw = genData?.text ?? '';
+        // Robust JSON Extraction
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          raw = jsonMatch[0];
+        } else {
+          raw = raw.replace(/```json/gi, '').replace(/```/gi, '').trim();
+        }
+
         const parsed = JSON.parse(raw || '{}');
         setData({
           analysisId: analysis.analysisId,
@@ -192,14 +206,21 @@ export const RebuiltCompareView: React.FC<RebuiltCompareViewProps> = ({ analysis
         });
       } catch (err) {
         console.error("Rebuild failed", err);
-        setError("Rebuild generation failed. Please try again.");
+        if (active) {
+          setError("Rebuild generation failed. Please try again.");
+        }
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
     performRebuild();
-  }, [analysisId, analysis]);
+    return () => {
+      active = false;
+    };
+  }, [analysisId, analysis, data]);
 
   const handleDownload = () => {
     const printWindow = window.open('', '_blank');

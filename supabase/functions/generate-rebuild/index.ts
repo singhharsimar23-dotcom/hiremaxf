@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { GoogleGenerativeAI } from 'npm:@google/generative-ai'
 
+import { checkPlanGate } from '../_shared/plan-gate.ts'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -17,12 +19,9 @@ export async function generateRebuild(req: Request) {
   )
 
   try {
-    // 1. IDENTITY ANCHORING (SEC-010)
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) throw new Error("Missing Authorization header")
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
-    if (authError || !user) throw new Error("Invalid or expired session")
+    const gateResult = await checkPlanGate(req, ['Career Pro', 'Career Elite', 'Automation'])
+    if (gateResult instanceof Response) return gateResult
+    const { user } = gateResult
 
     const body = await req.json()
     const { resume_id, targetRole, roleTrack, sourceText, run_id, version_id } = body

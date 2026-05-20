@@ -13,6 +13,7 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Sparkles, Lock, Loader2, Copy, Check, Download, RefreshCw, Save, AlertCircle } from 'lucide-react';
 import { UserPlan, ResumeGroup, CoverLetterResult, JobType, BackgroundJob } from '../types';
 import { supabase } from '../lib/supabase';
+import { AnalysisSkeleton } from './Skeletons';
 
 interface Props { plan: UserPlan; history: ResumeGroup[]; user: any; onUpgrade: () => void; dispatchJob: (type: JobType, payload: any) => Promise<string>; activeJobs: Record<string, BackgroundJob>; }
 
@@ -139,10 +140,19 @@ export const CoverLetterView: React.FC<Props> = ({ plan, history, user, onUpgrad
   const wc = result?.wordCount || result?.letterText?.split(/\s+/).filter(Boolean).length || 0;
 
   if (step === 'loading') return (
-    <div className="max-w-[600px] mx-auto py-32 flex flex-col items-center gap-6 text-center">
-      <Loader2 size={40} className="text-blue-500 animate-spin" />
-      <p className="text-white font-black text-xl">{loadMsg}</p>
-      <div className="flex gap-2 mt-2">{['Crafting…','JD Analysis…','Mapping Resume…'].map(m=><span key={m} className="text-[8px] font-black text-slate-600 uppercase tracking-widest">{m}</span>)}</div>
+    <div className="max-w-[1200px] mx-auto py-14 px-8 space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col items-center gap-4 text-center max-w-[600px] mx-auto mb-8">
+        <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+          <Loader2 size={24} className="text-blue-400 animate-spin" />
+        </div>
+        <p className="text-white font-black text-xl tracking-tight uppercase">{loadMsg}</p>
+        <div className="flex gap-2 justify-center mt-2 flex-wrap">
+          {['Analyzing JD Keywords…', 'Parsing Resume Signals…', 'Synthesizing Paragraphs…'].map(m => (
+            <span key={m} className="text-[8px] font-black text-blue-400 uppercase tracking-widest bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full">{m}</span>
+          ))}
+        </div>
+      </div>
+      <AnalysisSkeleton />
     </div>
   );
 

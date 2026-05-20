@@ -1,11 +1,14 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { AppView, DiagnosticResult, UserPlan } from '../types';
 import { supabase } from '../lib/supabase';
+import { getCached, setCached } from '../lib/queryCache';
 import {
   Sparkles, ShieldCheck, Briefcase, Linkedin, Mail, FileText,
   TrendingUp, Zap, ChevronRight, Clock, AlertTriangle, Check,
   BarChart2, Target, ArrowRight, Star, Activity, Instagram
 } from 'lucide-react';
+
+const CACHE_KEY = 'dash_apps';
 
 interface Props {
   currentAnalysis: DiagnosticResult | null;
@@ -84,8 +87,23 @@ export const DashboardView: React.FC<Props> = ({ currentAnalysis, plan, onNaviga
     const h = new Date().getHours();
     setGreeting(h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening');
     if (user) {
+      // Check cache for recent apps
+      const cachedApps = getCached<any[]>(CACHE_KEY);
+      if (cachedApps) {
+        setApps(cachedApps);
+      }
+
       // Fetch applications
-      supabase.from('job_applications').select('*').eq('user_id', user.id).order('applied_at', { ascending: false }).then(({ data }) => setApps(data || []));
+      supabase.from('job_applications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('applied_at', { ascending: false })
+        .then(({ data }) => {
+          if (data) {
+            setApps(data);
+            setCached(CACHE_KEY, data);
+          }
+        });
       
       // Fetch recent execution runs to build a live activity feed
       supabase.from('execution_runs')

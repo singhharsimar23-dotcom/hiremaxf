@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { getCached, setCached } from '../lib/queryCache';
+import { MarketIntelSkeleton as InsightsSkeleton } from './Skeletons';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import type {
   MarketSignal, GeoOpportunity, HiringCycle, BayesianPrior, FundingEvent,
@@ -123,7 +125,28 @@ const MarketOutlookView: React.FC = () => {
   }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    // 1. Try to load from in-memory cache first (stale-while-revalidate)
+    const cachedData = getCached<any>('market_insights');
+    if (cachedData) {
+      setMarketSignals(cachedData.marketSignals);
+      setGeoOpps(cachedData.geoOpps);
+      setHiringCycles(cachedData.hiringCycles);
+      setBayesianPriors(cachedData.bayesianPriors);
+      setFundingEvents(cachedData.fundingEvents);
+      setSkillPredictions(cachedData.skillPredictions);
+      setMacroSignals(cachedData.macroSignals);
+      setMomentum(cachedData.momentum);
+      setCausalSignals(cachedData.causalSignals);
+      setHealth(cachedData.health);
+      setSkillEvolution(cachedData.skillEvolution);
+      setReliability(cachedData.reliability);
+      if (cachedData.lastRefresh) {
+        setLastRefresh(new Date(cachedData.lastRefresh));
+      }
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [
@@ -194,15 +217,26 @@ const MarketOutlookView: React.FC = () => {
           .limit(10),
       ]);
 
-      setMarketSignals(signalsRes.data || []);
-      setGeoOpps(geoRes.data || []);
-      setHiringCycles(cyclesRes.data || []);
-      setBayesianPriors(priorRes.data || []);
-      setFundingEvents(fundingRes.data || []);
-      setSkillPredictions(predRes.data || []);
-      setMacroSignals(macroRes.data || []);
-      setMomentum(momentumRes.data || []);
-      setCausalSignals(causalRes.data || []);
+      const loadedSignals = signalsRes.data || [];
+      const loadedGeo = geoRes.data || [];
+      const loadedCycles = cyclesRes.data || [];
+      const loadedPriors = priorRes.data || [];
+      const loadedFunding = fundingRes.data || [];
+      const loadedPred = predRes.data || [];
+      const loadedMacro = macroRes.data || [];
+      const loadedMomentum = momentumRes.data || [];
+      const loadedCausal = causalRes.data || [];
+      
+      setMarketSignals(loadedSignals);
+      setGeoOpps(loadedGeo);
+      setHiringCycles(loadedCycles);
+      setBayesianPriors(loadedPriors);
+      setFundingEvents(loadedFunding);
+      setSkillPredictions(loadedPred);
+      setMacroSignals(loadedMacro);
+      setMomentum(loadedMomentum);
+      setCausalSignals(loadedCausal);
+      
       // Map raw health rows to the SystemHealth state structure
       const mappedHealth: SystemHealth = {
         status: (healthRes.data && healthRes.data.some((r: any) => r.status !== 'healthy')) ? 'WARNING' : 'OPERATIONAL',
@@ -219,7 +253,10 @@ const MarketOutlookView: React.FC = () => {
         _meta: { duration_ms: 12 }
       };
       setHealth(mappedHealth);
-      setSkillEvolution(evoRes.data || []);
+      
+      const loadedEvo = evoRes.data || [];
+      setSkillEvolution(loadedEvo);
+      
       // Map raw health rows to standard SourceReliability format
       const mappedReliability = (reliabilityRes.data || []).map((r: any) => ({
         domain: r.source,
@@ -231,7 +268,27 @@ const MarketOutlookView: React.FC = () => {
         updated_at: r.last_success_at || r.last_failure_at || new Date().toISOString()
       }));
       setReliability(mappedReliability);
-      setLastRefresh(new Date());
+      
+      const now = new Date();
+      setLastRefresh(now);
+
+      // Cache all results
+      const resultToCache = {
+        marketSignals: loadedSignals,
+        geoOpps: loadedGeo,
+        hiringCycles: loadedCycles,
+        bayesianPriors: loadedPriors,
+        fundingEvents: loadedFunding,
+        skillPredictions: loadedPred,
+        macroSignals: loadedMacro,
+        momentum: loadedMomentum,
+        causalSignals: loadedCausal,
+        health: mappedHealth,
+        skillEvolution: loadedEvo,
+        reliability: mappedReliability,
+        lastRefresh: now.toISOString()
+      };
+      setCached('market_insights', resultToCache);
 
       // Seed stream with real signals
       if (signalsRes.data?.length) {
@@ -603,20 +660,17 @@ const MarketOutlookView: React.FC = () => {
   // ─── Loading ───────────────────────────────────────────────────────────────
   if (loading && !marketSignals.length) {
     return (
-      <div className="min-h-screen bg-[#06070B] flex flex-col items-center justify-center gap-6 font-mono">
-        <div className="relative">
-          <div className="w-16 h-16 border-2 border-blue-500/20 rounded-full" />
-          <div className="absolute inset-0 w-16 h-16 border-t-2 border-blue-500 rounded-full animate-spin" />
-          <div className="absolute inset-4 w-8 h-8 border-t border-blue-400 rounded-full animate-spin" style={{ animationDirection: 'reverse' }} />
+      <div className="min-h-screen bg-[#06070B] p-6 space-y-8 font-mono text-slate-300">
+        <div className="flex justify-between items-center border-b border-[#1E2131] pb-4">
+          <div className="space-y-1">
+            <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.5em] animate-pulse">Initializing Intelligence Terminal</div>
+            <div className="text-[8px] text-slate-700 uppercase tracking-widest">Loading 12 intelligence layers...</div>
+          </div>
+          <div className="bg-[#12141C] border border-[#1E2131] px-4 py-1.5 rounded-xl text-[9px] text-slate-500 uppercase tracking-wider animate-pulse">
+            Establishing Secure Handshake...
+          </div>
         </div>
-        <div className="text-center space-y-1">
-          <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.5em] animate-pulse">Initializing Intelligence Terminal</div>
-          <div className="text-[8px] text-slate-700 uppercase tracking-widest">Loading 12 intelligence layers…</div>
-        </div>
-        {/* Skeleton grid preview */}
-        <div className="grid grid-cols-3 gap-3 w-full max-w-2xl px-6 opacity-30">
-          {Array(6).fill(0).map((_, i) => <Skeleton key={i} />)}
-        </div>
+        <InsightsSkeleton />
       </div>
     );
   }
