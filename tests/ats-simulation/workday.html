@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mock Workday SPA</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; }
+        .spinner { display: none; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="email"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Workday Careers</h1>
+    <div id="app">
+        <button id="startApplication">Apply Now</button>
+    </div>
+    
+    <div id="spinner" class="spinner"></div>
+
+    <script>
+        document.getElementById('startApplication').addEventListener('click', () => {
+            document.getElementById('app').innerHTML = '';
+            document.getElementById('spinner').style.display = 'block';
+            
+            // Simulate SPA load delay
+            setTimeout(() => {
+                document.getElementById('spinner').style.display = 'none';
+                document.getElementById('app').innerHTML = `
+                    <h2>Step 1: Contact Information</h2>
+                    <form id="wd-form">
+                        <div class="form-group">
+                            <label for="input-4">Legal First Name</label>
+                            <input type="text" id="input-4" data-automation-id="legalNameSection_firstName">
+                        </div>
+                        <div class="form-group">
+                            <label for="input-5">Legal Last Name</label>
+                            <input type="text" id="input-5" data-automation-id="legalNameSection_lastName">
+                        </div>
+                        <div class="form-group">
+                            <label for="input-6">Email Address</label>
+                            <input type="email" id="input-6" data-automation-id="email">
+                        </div>
+                        <button type="button" id="nextStep">Next Page</button>
+                    </form>
+                `;
+
+                document.getElementById('nextStep').addEventListener('click', () => {
+                    document.getElementById('app').innerHTML = `
+                        <h2>Step 2: Experience</h2>
+                        <form id="wd-form-2">
+                             <div class="form-group">
+                                <label for="resume-upload">Resume/CV (Required)</label>
+                                <input type="file" id="resume-upload" data-automation-id="resumeUpload">
+                            </div>
+                        </form>
+                    `;
+                    // Push states to trick popstate listeners if they were still around, though we don't need them anymore
+                    window.history.pushState(null, 'Step 2', '/apply/step2'); 
+                });
+            }, 2500); // 2.5 seconds to ensure MutationObserver is required
+        });
+    </script>
+</body>
+</html>

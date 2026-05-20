@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mock Greenhouse Application</title>
+    <style>
+        body {
+            font-family: helvetica, arial, sans-serif;
+            background: #fff;
+            padding: 40px;
+            max-width: 600px;
+            margin: auto;
+        }
+
+        .field {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: inline-block;
+            width: 100px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        select {
+            padding: 10px;
+            width: calc(100% - 120px);
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        .asterisk {
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Apply for this Job</h2>
+
+    <form id="application_form">
+        <div class="field">
+            <label for="first_name">First Name <span class="asterisk">*</span></label>
+            <input type="text" id="first_name" name="first_name" required aria-required="true">
+        </div>
+
+        <div class="field">
+            <label for="last_name">Last Name <span class="asterisk">*</span></label>
+            <input type="text" id="last_name" name="last_name" required aria-required="true">
+        </div>
+
+        <div class="field">
+            <label for="email">Email <span class="asterisk">*</span></label>
+            <input type="email" id="email" name="email" required aria-required="true">
+        </div>
+
+        <div class="field">
+            <label for="job_application_answers_attributes_0_text_value">LinkedIn Profile</label>
+            <!-- Hard to target by ID, great for test heuristics -->
+            <input type="text" id="job_application_answers_attributes_0_text_value"
+                name="job_application[answers_attributes][0][text_value]">
+        </div>
+
+        <!-- Trap field -->
+        <div style="display:none;" aria-hidden="true">
+            <label for="website_url_honeypot">Website</label>
+            <input type="text" id="website_url_honeypot" name="website" tabindex="-1">
+        </div>
+
+        <button type="submit">Submit Application</button>
+    </form>
+</body>
+
+</html>

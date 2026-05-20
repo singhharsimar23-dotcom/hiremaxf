@@ -1,0 +1,88 @@
+{
+  "_meta": {
+    "description": "Expected minimum baseline per source. Derived from historical avg_jobs_returned in source_reliability + job_pointers history. Edit freely — lower thresholds for low-volume sources.",
+    "how_to_update": "Run 'npm run coverage' after a healthy 24h period. Look at INFO lines showing actual rates, then update minimums here.",
+    "version": "1.0.0"
+  },
+
+  "thresholds": {
+    "global": {
+      "min_jobs_per_24h":              1,
+      "max_zero_output_cron_runs":     3,
+      "max_persistence_failure_pct":  10,
+      "max_consecutive_zero_runs":     5,
+      "cron_stale_after_minutes":     40
+    }
+  },
+
+  "sources": {
+    "greenhouse": {
+      "note": "High-volume ATS. GREENHOUSE legacy avg: 740/run. New v3 pipeline: at least 1 new per day expected.",
+      "min_jobs_per_24h":    1,
+      "max_duplicate_rate": 0.95,
+      "expected_last_run_within_hours": 2
+    },
+    "lever": {
+      "note": "LEVER legacy avg: 253/run. Covers Stripe, Anthropic, Linear, Plaid, Ramp, Brex, Rippling.",
+      "min_jobs_per_24h":    1,
+      "max_duplicate_rate": 0.95,
+      "expected_last_run_within_hours": 2
+    },
+    "ashby": {
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.90,
+      "expected_last_run_within_hours": 48
+    },
+    "smartrecruiters": {
+      "note": "SMARTRECRUITERS legacy avg: 468 total. Should produce at least 1 per day when active.",
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.90,
+      "expected_last_run_within_hours": 48
+    },
+    "adzuna": {
+      "note": "ADZUNA requires API key. If key present, expect high volume.",
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.80,
+      "expected_last_run_within_hours": 4
+    },
+    "himalayas": {
+      "note": "HIMALAYAS legacy avg: 19 total. Low-volume remote board.",
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.75,
+      "expected_last_run_within_hours": 48
+    },
+    "working-nomads": {
+      "note": "WORKINGNOMADS — small remote-first board. Expect low volume.",
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.75,
+      "expected_last_run_within_hours": 48
+    },
+    "remote-ok": {
+      "note": "REMOTEOK — aggregator. Should produce jobs when active.",
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.80,
+      "expected_last_run_within_hours": 48
+    },
+    "weworkremotely": {
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.80,
+      "expected_last_run_within_hours": 48
+    },
+    "jobicy": {
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.80,
+      "expected_last_run_within_hours": 48
+    },
+    "static-feed": {
+      "min_jobs_per_24h":    0,
+      "max_duplicate_rate": 0.85,
+      "expected_last_run_within_hours": 48
+    }
+  },
+
+  "gateway": {
+    "infra_gateway_url": "https://ssuknybhzcuusjardsve.supabase.co/functions/v1/infra-gateway",
+    "max_consecutive_503s": 3,
+    "note": "Consecutive 503s on infra-gateway = CRITICAL persistence failure. Detected via zero insert_count across all active sources simultaneously."
+  }
+}

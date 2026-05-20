@@ -1,4 +1,4 @@
-import { webcrypto } from 'crypto';
+import { webcrypto } from 'node:crypto';
 const crypto = webcrypto;
 
 // Timing-safe constant-time byte comparison
@@ -190,14 +190,15 @@ async function generateWorkerSignature(
 }
 
 // Normalize plan name just like the webhook logic
-function mapPlan(plan: string): string {
+function mapPlan(plan: string, status: string = 'succeeded'): string {
+  const isInactive = ['cancelled', 'expired', 'unpaid', 'failed', 'paused'].includes(String(status).toLowerCase());
+  if (isInactive) return 'Starter';
+
   const normalized = plan.toLowerCase().replace(/\s+/g, '');
   if (normalized.includes('pro')) {
     return 'Career Pro';
   } else if (normalized.includes('elite')) {
     return 'Career Elite';
-  } else if (normalized.includes('starter') || normalized.includes('free')) {
-    return 'Starter';
   }
   return 'Starter';
 }
@@ -246,24 +247,29 @@ async function runTests() {
   const isWorkerStaleValid = await verifyWorkerDodoSignature(rawBody, msgId, staleTimestamp, workerSig, secret);
   console.log(`  - Stale timestamp tolerance validation (10m difference): ${!isWorkerStaleValid ? 'PASSED (REJECTED)' : 'FAILED'}`);
 
-  // --- UNIT TEST 3: Plan Mapping Calibration ---
-  console.log('\n[3] Testing Plan Normalization Mapping:');
+  // --- UNIT TEST 3: Plan Mapping & Locking Calibration ---
+  console.log('\n[3] Testing Plan Normalization & Locking Mapping:');
   const planTests = [
-    { in: 'Career Pro', expected: 'Career Pro' },
-    { in: 'career_pro', expected: 'Career Pro' },
-    { in: 'Career Elite', expected: 'Career Elite' },
-    { in: 'elite_6m', expected: 'Career Elite' },
-    { in: 'Starter', expected: 'Starter' },
-    { in: 'free_tier', expected: 'Starter' }
+    { plan: 'Career Pro', status: 'succeeded', expected: 'Career Pro' },
+    { plan: 'career_pro', status: 'active', expected: 'Career Pro' },
+    { plan: 'Career Elite', status: 'active', expected: 'Career Elite' },
+    { plan: 'elite_6m', status: 'succeeded', expected: 'Career Elite' },
+    { plan: 'Starter', status: 'succeeded', expected: 'Starter' },
+    // SECURE DOWINGRADE LOCK CHECKS
+    { plan: 'Career Pro', status: 'cancelled', expected: 'Starter' },
+    { plan: 'Career Elite', status: 'expired', expected: 'Starter' },
+    { plan: 'Career Elite', status: 'unpaid', expected: 'Starter' },
+    { plan: 'Automation', status: 'failed', expected: 'Starter' },
+    { plan: 'Career Pro', status: 'paused', expected: 'Starter' }
   ];
   let planFailures = 0;
   for (const t of planTests) {
-    const mapped = mapPlan(t.in);
+    const mapped = mapPlan(t.plan, t.status);
     const success = mapped === t.expected;
-    console.log(`  - Input: "${t.in}" -> Mapped: "${mapped}" (${success ? 'MATCH' : 'MISMATCH'})`);
+    console.log(`  - Input: "${t.plan}" [Status: ${t.status}] -> Mapped: "${mapped}" (${success ? 'MATCH' : 'MISMATCH'})`);
     if (!success) planFailures++;
   }
-  console.log(`  - Plan normalization suite: ${planFailures === 0 ? 'SUCCESS' : 'FAILURE'}`);
+  console.log(`  - Plan mapping & locking suite: ${planFailures === 0 ? 'SUCCESS' : 'FAILURE'}`);
 
   // --- STRESS TEST 4: Timing & High Concurrency Verification ---
   console.log('\n[4] Running High Concurrency Stress Test (100 parallel verifications):');

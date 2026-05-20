@@ -1,0 +1,67 @@
+{
+    "manifest_version": 3,
+    "name": "HireMax Execution Engine",
+    "version": "1.0.7",
+    "description": "Universal Job Application Agent. Context-aware, AI-enhanced, ATS-adaptive autofill.",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "storage",
+        "tabs",
+        "webNavigation",
+        "contextMenus",
+        "notifications"
+    ],
+    "host_permissions": [
+        "https://*.supabase.co/*",
+        "<all_urls>"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://*/*",
+                "http://*/*"
+            ],
+            "js": [
+                "utils/state-machine.js",
+                "utils/telemetry-buffer.js",
+                "utils/dom-hasher.js",
+                "utils/field-ontology.js",
+                "utils/ats-adapter.js",
+                "content.js",
+                "dist/overlay/overlay.js"
+            ],
+            "run_at": "document_idle",
+            "all_frames": true
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "dist/overlay/overlay.css",
+                "icons/*"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "action": {
+        "default_popup": "dist/popup/index.html",
+        "default_title": "HireMax Execution"
+    },
+    "externally_connectable": {
+        "matches": [
+            "http://localhost:3000/*",
+            "http://localhost:5173/*",
+            "https://*.supabase.co/*",
+            "https://hiremax.app/*",
+            "https://www.hiremax.app/*",
+            "https://hiremax.site/*",
+            "https://www.hiremax.site/*"
+        ]
+    }
+}

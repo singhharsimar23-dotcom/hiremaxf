@@ -176,7 +176,9 @@ Deno.serve(async (req: Request) => {
 
     // Map plans dynamically to correct database fields
     let mappedPlan = 'Starter'
-    if (plan) {
+    const isInactive = ['cancelled', 'expired', 'unpaid', 'failed', 'paused'].includes(String(status).toLowerCase())
+
+    if (plan && !isInactive) {
       const p = String(plan).toLowerCase()
       if (p.includes('pro')) {
         mappedPlan = 'Career Pro'

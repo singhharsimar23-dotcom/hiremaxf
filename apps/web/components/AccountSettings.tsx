@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Lock, Shield, Bell, CheckCircle2, ArrowRight, AlertTriangle, Loader2, ChevronRight, LogOut, Trash2 } from 'lucide-react';
 import { UserPlan, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
@@ -17,6 +17,15 @@ export const AccountSettings: React.FC<AccountSettingsProps> = ({ plan, profile 
   const [emailNotifications, setEmailNotifications] = useState(
     (profile?.metadata as any)?.emailNotifications !== false
   );
+
+  // Reactively sync state when profile loads asynchronously after mount
+  useEffect(() => {
+    if (profile) {
+      setFullName(profile.full_name || '');
+      setDefaultRole((profile.metadata as any)?.defaultRole || '');
+      setEmailNotifications((profile.metadata as any)?.emailNotifications !== false);
+    }
+  }, [profile?.id, profile?.full_name, (profile?.metadata as any)?.defaultRole]);
 
   const [pwLoading, setPwLoading] = useState(false);
   const [pwSent, setPwSent] = useState(false);

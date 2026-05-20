@@ -180,9 +180,18 @@ function App() {
         const viewParam = searchParams.get('view') as AppView | null;
         const redirectParam = searchParams.get('redirect');
 
-        if (path === 'profile') setView('profile');
-        else if (path === 'dashboard') setView('dashboard');
-        else if (path === 'intelligence') setView('full-review');
+        const validViews: AppView[] = [
+            'landing', 'auth', 'auth-bridge', 'pricing', 'faq', 'contact', 'terms', 'privacy', 'refund',
+            'dashboard', 'profile', 'full-review', 'career-intelligence', 'market-outlook', 'applications',
+            'rebuild', 'rebuild-standalone', 'resume-editor', 'settings', 'billing', 'admin', 'tracker',
+            'interview-prep', 'cover-letter', 'linkedin-optimizer', 'history', 'preview', 'ai-review',
+        ];
+
+        if (path === 'intelligence') {
+            setView('full-review');
+        } else if (validViews.includes(path as AppView)) {
+            setView(path as AppView);
+        }
 
         // Handle ?view= routing (used by extension Auth Bridge and internal redirects)
         if (viewParam === 'auth-bridge') {
@@ -191,7 +200,7 @@ function App() {
         } else if (viewParam === 'auth' && redirectParam) {
             // Post-login redirect from AuthBridge flow
             setView('auth');
-        } else if (viewParam && ['dashboard', 'profile', 'pricing', 'settings', 'auth'].includes(viewParam)) {
+        } else if (viewParam && ['dashboard', 'profile', 'pricing', 'settings', 'auth', 'market-outlook'].includes(viewParam)) {
             setView(viewParam);
             // Safe to clear once routed
             window.history.replaceState({}, document.title, window.location.pathname);

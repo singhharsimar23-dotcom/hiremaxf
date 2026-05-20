@@ -601,6 +601,14 @@ export const CareerIntelligenceView: React.FC<CareerIntelligenceViewProps> = ({
       }
    }, [successMessage]);
 
+   // Reactively update parameters when a new analysisResult is loaded from history or new runs
+   useEffect(() => {
+      if (analysisResult) {
+         setTargetRole(analysisResult.role || '');
+         setUseResumeContext(true);
+      }
+   }, [analysisResult]);
+
    // Load snapshot archive on mount
    useEffect(() => {
       const loadArchive = async () => {

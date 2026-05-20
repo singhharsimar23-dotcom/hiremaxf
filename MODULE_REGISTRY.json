@@ -1,0 +1,301 @@
+{
+  "version": "2.0.0",
+  "last_updated": "2026-04-10",
+  "platform": "HireMax — Predictive Hiring Intelligence",
+  "modules": {
+    "ingestion_engine": {
+      "name": "Job Ingestion Engine (Trusted Core)",
+      "path": "core/ingestion-engine",
+      "status": "stable",
+      "purpose": "The absolute source of truth for high-fidelity normalization, SHA-256 identity, and Signal Math scoring.",
+      "owner": "data-team",
+      "canonical_table": "job_pointers",
+      "banned": ["b2", "r2", "s3", "services/api/functions", "infra/functions"],
+      "entry_point": "core/ingestion-engine/group_processor.ts",
+      "interface": "core/ingestion-engine/interfaces.ts",
+      "key_files": [
+        "core/ingestion-engine/normalize.ts",
+        "core/ingestion-engine/dedup_service.ts",
+        "core/ingestion-engine/interfaces.ts",
+        "core/ingestion-engine/core/normalization.ts",
+        "core/ingestion-engine/core/scoring.ts"
+      ],
+      "dependencies": ["connector_fleet", "shared_db", "shared_types"],
+      "forbidden_dependencies": ["apps/*", "services/*"],
+      "tags": ["trusted-core", "normalization", "identity"],
+      "data_sources": ["job_pointers", "cursors", "quarantine_state"],
+      "execution_mode": "cron",
+      "cron_schedule": "every 2 minutes"
+    },
+    "connector_fleet": {
+      "name": "Connector Fleet (HTTP Fetchers)",
+      "path": "infra/connectors",
+      "status": "active",
+      "purpose": "35 HTTP fetchers — one per job source. Handles auth, pagination, rate limits.",
+      "owner": "data-team",
+      "entry_point": "infra/connectors/[source].ts",
+      "interface": "infra/connectors/base-connector.ts",
+      "active_connectors": [
+        "greenhouse", "ashby", "lever", "smartrecruiters", "workable", "workday",
+        "himalayas", "remote_ok", "weworkremotely", "working_nomads", "static_feed",
+        "adzuna", "reed", "jooble", "usajobs", "linkedin_scout", "otta", "personio",
+        "teamtailor", "jazzhr", "jobvite", "comeet", "cord", "recruitee", "bamboohr",
+        "hired", "findwork", "dice", "careerjet", "jobicy", "hacker_news", "builtin",
+        "google_jobs", "scraper_html", "indeed"
+      ],
+      "dependencies": ["shared_types", "shared_utils"],
+      "forbidden_dependencies": ["apps/*", "services/*", "core/ingestion-engine"],
+      "data_sources": [],
+      "execution_mode": "on-demand",
+      "file_count": 35
+    },
+    "adapter_layer": {
+      "name": "Adapter Layer",
+      "path": "infra/adapters",
+      "status": "active",
+      "purpose": "Thin fetch+parse wrappers bridging connectors to the ingestion engine",
+      "owner": "data-team",
+      "entry_point": "infra/adapters/registry.ts",
+      "interface": "infra/adapters/interface.ts",
+      "key_files": ["infra/adapters/registry.ts", "infra/adapters/interface.ts"],
+      "dependencies": ["connector_fleet", "ingestion_engine", "shared_types"],
+      "forbidden_dependencies": ["apps/*", "services/*"],
+      "data_sources": [],
+      "execution_mode": "on-demand",
+      "file_count": 38
+    },
+    "matching_engine": {
+      "name": "Matching Engine",
+      "path": "core/matching-engine",
+      "status": "stub",
+      "_note": "PENDING IMPLEMENTATION — directory exists, no business logic yet",
+      "purpose": "User-job matching producing ranked lists based on profile fit and callback prediction",
+      "owner": "core-team",
+      "entry_point": "core/matching-engine/index.ts",
+      "interface": "core/matching-engine/interface.ts",
+      "dependencies": ["scoring_engine", "resume_engine", "shared_types", "shared_db"],
+      "forbidden_dependencies": ["apps/*", "services/*"],
+      "data_sources": ["jobs", "users", "match_results"],
+      "execution_mode": "on-demand",
+      "performance_target": { "latency_p95_ms": 500, "accuracy_callback_prediction": 0.33 }
+    },
+    "intelligence_engine": {
+      "name": "Market Intelligence Engine",
+      "path": "core/intelligence-engine",
+      "status": "stub",
+      "_note": "PENDING IMPLEMENTATION — logic currently scattered across shared-core and frontend components",
+      "_current_logic_locations": [
+        "core/shared/shared-core/decision-engine.ts",
+        "core/shared/shared-core/signal-math.ts",
+        "core/shared/shared-core/market-math.ts",
+        "apps/web/components/CareerIntelligenceView.tsx",
+        "apps/web/components/MarketOutlookView.tsx"
+      ],
+      "purpose": "12-layer market intelligence with 90-day hiring foresight and threat/opportunity detection",
+      "owner": "intelligence-team",
+      "entry_point": "core/intelligence-engine/index.ts",
+      "interface": "core/intelligence-engine/interface.ts",
+      "layers": [
+        "01-data-ingestion", "02-normalization", "03-signal-extraction",
+        "04-trend-detection", "05-bayesian-learning", "06-causal-inference",
+        "07-prediction", "08-threat-detection", "09-opportunity-detection",
+        "10-timing-intelligence", "11-hidden-jobs", "12-market-synthesis"
+      ],
+      "dependencies": ["shared_types", "shared_db"],
+      "forbidden_dependencies": ["apps/*", "services/*"],
+      "data_sources": ["market_signals", "jobs", "company_data"],
+      "execution_mode": "cron",
+      "cron_schedule": "every hour"
+    },
+    "resume_engine": {
+      "name": "Resume Singularity Engine",
+      "path": "core/resume-engine",
+      "status": "stub",
+      "_note": "PENDING IMPLEMENTATION — logic currently inside apps/web components",
+      "_current_logic_locations": [
+        "apps/web/components/ResumeBuilder.tsx",
+        "apps/web/components/ProfileView.tsx",
+        "apps/web/components/TransformationFactory.tsx",
+        "core/shared/shared-core/job-normalizer.ts"
+      ],
+      "purpose": "8-layer resume processing: parsing, extraction, embedding, skill mapping, scoring, optimization",
+      "owner": "core-team",
+      "entry_point": "core/resume-engine/index.ts",
+      "interface": "core/resume-engine/interface.ts",
+      "layers": [
+        "01-parsing", "02-extraction", "03-embedding", "04-skill-mapping",
+        "05-experience-scoring", "06-quality-assessment", "07-singularity-scoring", "08-optimization"
+      ],
+      "dependencies": ["shared_types", "shared_db", "shared_nlp"],
+      "forbidden_dependencies": ["apps/*", "services/*"],
+      "data_sources": ["resumes", "user_profiles"],
+      "execution_mode": "on-demand"
+    },
+    "scoring_engine": {
+      "name": "Scoring Engine",
+      "path": "core/scoring-engine",
+      "status": "stub",
+      "_note": "PENDING IMPLEMENTATION — scoring logic in shared-core/signal-math.ts and market-math.ts",
+      "_current_logic_locations": [
+        "core/shared/shared-core/signal-math.ts",
+        "core/shared/shared-core/market-math.ts",
+        "core/shared/shared-core/match-scorer.ts"
+      ],
+      "purpose": "Mathematical scoring models: Bayesian, ensemble, neural — targets 33% callback prediction accuracy",
+      "owner": "ml-team",
+      "entry_point": "core/scoring-engine/index.ts",
+      "interface": "core/scoring-engine/interface.ts",
+      "models": ["bayesian-scorer", "ensemble-scorer", "neural-scorer"],
+      "dependencies": ["shared_types"],
+      "forbidden_dependencies": ["apps/*", "services/*", "infra/connectors/*"],
+      "data_sources": ["match_history", "callback_data"],
+      "execution_mode": "on-demand",
+      "performance_target": { "accuracy": 0.33, "latency_p95_ms": 100 }
+    },
+    "enrichment_engine": {
+      "name": "Enrichment Engine",
+      "path": "core/enrichment-engine",
+      "status": "stub",
+      "_note": "PENDING IMPLEMENTATION — entry at infra/workers/enrichment.ts but no dedicated engine",
+      "_current_logic_locations": ["infra/workers/enrichment.ts"],
+      "purpose": "LLM-powered job enrichment: skill extraction, seniority classification, role categorization",
+      "owner": "ml-team",
+      "entry_point": "core/enrichment-engine/index.ts",
+      "interface": "core/enrichment-engine/interface.ts",
+      "llm_providers": ["groq", "gemini"],
+      "dependencies": ["shared_types", "shared_db"],
+      "forbidden_dependencies": ["apps/*", "services/*"],
+      "data_sources": ["jobs"],
+      "execution_mode": "cron",
+      "cron_schedule": "every 5 minutes"
+    },
+    "shared_core": {
+      "name": "Shared Core",
+      "path": "core/shared/shared-core",
+      "status": "active",
+      "purpose": "Cross-cutting utilities shared between Edge Functions, Workers, and Core Engines",
+      "key_files": {
+        "intelligence": ["decision-engine.ts", "signal-math.ts", "market-math.ts", "market-signals.ts"],
+        "nlp_ontology": ["tech-ontology.ts", "keyword-pool.ts", "analysis-context.ts", "guardrails.ts"],
+        "ingestion_support": ["job-normalizer.ts", "ingestion-guard.ts", "binary-router.ts", "fingerprint.ts"],
+        "infrastructure": ["storage-client.ts", "redis.ts", "security.ts", "r2-client.ts"],
+        "ats": ["ats-patterns.ts", "ats-registry.ts"]
+      },
+      "dependencies": ["shared_db", "shared_types"],
+      "forbidden_dependencies": ["apps/*", "services/*", "core/ingestion-engine"]
+    },
+    "web_app": {
+      "name": "Web Application",
+      "path": "apps/web",
+      "status": "active",
+      "purpose": "React frontend — resume upload, job matching, market intelligence, application execution",
+      "owner": "frontend-team",
+      "entry_point": "apps/web/index.tsx",
+      "router": "apps/web/App.tsx",
+      "key_components": [
+        "ExecutionPreviewView.tsx (87KB)",
+        "ProfileView.tsx (74KB)",
+        "TransformationFactory.tsx (40KB)",
+        "CareerIntelligenceView.tsx (37KB)",
+        "MarketOutlookView.tsx (33KB)",
+        "RebuildStandaloneView.tsx (34KB)"
+      ],
+      "dependencies": ["services/*", "shared_types"],
+      "forbidden_dependencies": ["core/*", "infra/*"],
+      "tech_stack": ["React", "Vite", "Supabase-js", "Recharts", "pdfjs-dist"]
+    },
+    "edge_functions": {
+      "name": "Supabase Edge Functions",
+      "path": "infra/functions",
+      "status": "active",
+      "purpose": "Serverless compute for parsing, scraping, LinkedIn intelligence",
+      "functions": {
+        "infra-gateway": "infra/functions/infra-gateway",
+        "infra-parser": "infra/functions/infra-parser",
+        "infra-scraper": "infra/functions/infra-scraper",
+        "worker-linkedin-v2": "infra/functions/worker-linkedin-v2"
+      },
+      "dependencies": ["core/shared/shared-core"],
+      "execution_mode": "http-trigger"
+    },
+    "workers": {
+      "name": "Cloudflare Workers",
+      "path": "infra/workers",
+      "status": "active",
+      "purpose": "Cron-triggered background processing: ingestion, enrichment, cleaning",
+      "entry_point": "infra/workers/index.ts",
+      "key_files": [
+        "infra/workers/index.ts",
+        "infra/workers/enrichment.ts",
+        "infra/workers/cleaner.ts",
+        "infra/workers/config/sources.ts",
+        "infra/workers/config/worker_groups.ts",
+        "infra/workers/config/constants.ts"
+      ],
+      "cron_jobs": {
+        "ingestion": "every 2 minutes",
+        "enrichment": "every 5 minutes",
+        "cleaning": "daily"
+      }
+    }
+  },
+  "connectors": {
+    "greenhouse": "infra/connectors/greenhouse.ts",
+    "ashby": "infra/connectors/ashby.ts",
+    "lever": "infra/connectors/lever.ts",
+    "smartrecruiters": "infra/connectors/smartrecruiters.ts",
+    "workable": "infra/connectors/workable.ts",
+    "workday": "infra/connectors/workday.ts",
+    "himalayas": "infra/connectors/himalayas.ts",
+    "remote_ok": "infra/connectors/remote_ok.ts",
+    "weworkremotely": "infra/connectors/weworkremotely.ts",
+    "working_nomads": "infra/connectors/working_nomads.ts",
+    "adzuna": "infra/connectors/adzuna.ts",
+    "reed": "infra/connectors/reed.ts",
+    "jooble": "infra/connectors/jooble.ts",
+    "usajobs": "infra/connectors/usajobs.ts",
+    "linkedin_scout": "infra/connectors/linkedin_scout.ts",
+    "static_feed": "infra/connectors/static_feed.ts",
+    "otta": "infra/connectors/otta.ts",
+    "personio": "infra/connectors/personio.ts",
+    "teamtailor": "infra/connectors/teamtailor.ts",
+    "jazzhr": "infra/connectors/jazzhr.ts",
+    "jobvite": "infra/connectors/jobvite.ts",
+    "comeet": "infra/connectors/comeet.ts",
+    "cord": "infra/connectors/cord.ts",
+    "recruitee": "infra/connectors/recruitee.ts",
+    "bamboohr": "infra/connectors/bamboohr.ts",
+    "hired": "infra/connectors/hired.ts",
+    "findwork": "infra/connectors/findwork.ts",
+    "dice": "infra/connectors/dice.ts",
+    "careerjet": "infra/connectors/careerjet.ts",
+    "jobicy": "infra/connectors/jobicy.ts",
+    "hacker_news": "infra/connectors/hacker_news.ts",
+    "builtin": "infra/connectors/builtin.ts",
+    "google_jobs": "infra/connectors/google_jobs.ts",
+    "scraper_html": "infra/connectors/scraper_html.ts",
+    "indeed": "infra/connectors/indeed.ts"
+  },
+  "workers_map": {
+    "ingestion_worker": "infra/workers/index.ts",
+    "enrichment_worker": "infra/workers/enrichment.ts",
+    "cleaner_worker": "infra/workers/cleaner.ts"
+  },
+  "data_sources": {
+    "jobs": "Supabase PostgreSQL — canonical job table",
+    "users": "Supabase PostgreSQL — user profiles",
+    "match_results": "Supabase PostgreSQL — scored job matches per user",
+    "market_signals": "Supabase PostgreSQL — market intelligence data",
+    "market_intelligence": "Supabase PostgreSQL — processed intelligence output",
+    "resumes": "Supabase Storage — PDF files",
+    "cursors": "Cloudflare KV — ingestion pagination state",
+    "quarantine": "Cloudflare KV — circuit breaker state per source"
+  },
+  "forbidden_import_rules": [
+    { "from": "core/*", "to": "apps/*", "reason": "Core must not depend on UI layer" },
+    { "from": "core/*", "to": "services/*", "reason": "Core is orchestrated by services, not vice versa" },
+    { "from": "infra/*", "to": "core/*", "reason": "Infrastructure executes, core thinks" },
+    { "from": "shared/*", "to": "core/*", "reason": "Shared must remain dependency-free of domain logic" },
+    { "from": "shared/*", "to": "apps/*", "reason": "Shared is platform-agnostic" }
+  ]
+}

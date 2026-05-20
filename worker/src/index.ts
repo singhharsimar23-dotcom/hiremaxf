@@ -157,19 +157,23 @@ async function handleFetch(request: Request, env: Env, ctx: ExecutionContext): P
         const userId = metadata?.user_id;
         let planName = metadata?.plan;
 
+        const status = data?.status || '';
+
         if (!userId || !planName) {
           console.warn('[Dodo Webhook] Missing user_id or plan in metadata:', metadata);
           return jsonOk({ status: 'ignored', reason: 'Missing user_id or plan in metadata' }, Date.now() - startTime);
         }
 
-        let dbPlan: string = planName;
-        const normalized = planName.toLowerCase().replace(/\s+/g, '');
-        if (normalized.includes('pro')) {
-          dbPlan = 'Career Pro';
-        } else if (normalized.includes('elite')) {
-          dbPlan = 'Career Elite';
-        } else if (normalized.includes('starter') || normalized.includes('free')) {
-          dbPlan = 'Starter';
+        const isInactive = ['cancelled', 'expired', 'unpaid', 'failed', 'paused'].includes(String(status).toLowerCase());
+
+        let dbPlan = 'Starter';
+        if (!isInactive) {
+          const normalized = planName.toLowerCase().replace(/\s+/g, '');
+          if (normalized.includes('pro')) {
+            dbPlan = 'Career Pro';
+          } else if (normalized.includes('elite')) {
+            dbPlan = 'Career Elite';
+          }
         }
 
         const { getClient } = await import('./infra/db');

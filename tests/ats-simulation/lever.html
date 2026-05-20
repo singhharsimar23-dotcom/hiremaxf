@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mock Lever Application</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        .application-field {
+            margin-top: 15px;
+        }
+
+        .application-label {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .application-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #8e959c;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Submit your application</h2>
+
+    <div id="application-form">
+        <div class="application-field">
+            <span class="application-label">Resume/CV ✱</span>
+            <input type="file" name="resume" data-qa="input-resume">
+        </div>
+
+        <div class="application-field">
+            <span class="application-label">Full name ✱</span>
+            <input type="text" name="name" class="application-input" required>
+        </div>
+
+        <div class="application-field">
+            <span class="application-label">Email ✱</span>
+            <input type="email" name="email" class="application-input" required>
+        </div>
+
+        <div class="application-field">
+            <span class="application-label">Current worksite?</span>
+            <select name="cards[4f8b9-8c9-02j][field0]" class="application-input" aria-label="Current worksite?">
+                <option value="">Select...</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+            </select>
+        </div>
+
+        <button type="submit"
+            style="margin-top: 30px; padding: 10px 20px; background: #0076f7; color: white; border: none; border-radius: 4px;">Submit
+            application</button>
+    </div>
+</body>
+
+</html>

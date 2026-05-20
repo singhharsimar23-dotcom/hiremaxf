@@ -25,20 +25,34 @@ const PLAN_FEATURES: Record<string, string[]> = {
     'Follow-up email generator',
     'Priority email support',
   ],
-  Elite: [
+  'Career Elite': [
     'Everything in Career Pro',
+    'Career Intelligence & Execution Targeting',
     'Interview prep & mock Q&A',
     'Advanced company signal tracking',
     'Resume version history & comparison',
-    'Dedicated support channel',
+    'Priority support channel',
     'Early access to new features',
+  ],
+  'Career Elite 6M': [
+    'Everything in Career Elite',
+    '6-month access at a discounted rate',
+    'Priority support channel',
+  ],
+  Automation: [
+    'Everything in Career Elite',
+    'Automated application execution engine',
+    'Mass outreach & tracking',
+    'Dedicated success manager',
   ],
 };
 
 const PLAN_PRICE: Record<string, string> = {
   Starter: '$0/mo',
   'Career Pro': '$29/mo',
-  Elite: '$49/mo',
+  'Career Elite': '$49/mo',
+  'Career Elite 6M': '$39/mo',
+  Automation: 'Contact us',
 };
 
 export const Billing: React.FC<BillingProps> = ({ plan, setView }) => {
@@ -174,7 +188,7 @@ export const Billing: React.FC<BillingProps> = ({ plan, setView }) => {
               <div>
                 <p className="text-white font-bold text-sm mb-1">Payment receipts are sent via email</p>
                 <p className="text-slate-500 text-sm font-medium max-w-xs">
-                  All invoices and payment confirmations are delivered to your account email from Stripe. Check your inbox for receipts.
+                  All invoices and payment confirmations are delivered to your account email from Dodo Payments. Check your inbox for receipts.
                 </p>
               </div>
               <a

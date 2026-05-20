@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "description": "Canonical source-to-adapter mapping. Generated from reading registry.ts and sources.ts. Do not hand-edit — run 'npm run preflight' to validate.",
+    "generated_from": [
+      "infra/adapters/registry.ts",
+      "infra/workers/config/sources.ts"
+    ],
+    "excluded": {}
+  },
+  "sources": {
+    "indeed":           { "adapter_file": "infra/adapters/indeed.ts",         "tier": "BETA",  "enabled": true  },
+    "greenhouse":       { "adapter_file": "infra/adapters/greenhouse.ts",    "tier": "ALPHA", "enabled": true  },
+    "lever":            { "adapter_file": "infra/adapters/lever.ts",          "tier": "ALPHA", "enabled": true  },
+    "ashby":            { "adapter_file": "infra/adapters/ashby.ts",          "tier": "ALPHA", "enabled": true  },
+    "smartrecruiters":  { "adapter_file": "infra/adapters/smartrecruiters.ts","tier": "ALPHA", "enabled": true  },
+    "workable":         { "adapter_file": "infra/adapters/workable.ts",       "tier": "ALPHA", "enabled": true  },
+    "jooble":           { "adapter_file": "infra/adapters/jooble.ts",         "tier": "BETA",  "enabled": true  },
+    "adzuna":           { "adapter_file": "infra/adapters/adzuna.ts",         "tier": "BETA",  "enabled": true  },
+    "reed":             { "adapter_file": "infra/adapters/reed.ts",           "tier": "BETA",  "enabled": true  },
+    "usajobs":          { "adapter_file": "infra/adapters/usajobs.ts",        "tier": "BETA",  "enabled": true  },
+    "careerjet":        { "adapter_file": "infra/adapters/careerjet.ts",      "tier": "BETA",  "enabled": true  },
+    "builtin":          { "adapter_file": "infra/adapters/builtin.ts",        "tier": "BETA",  "enabled": true  },
+    "dice":             { "adapter_file": "infra/adapters/dice.ts",           "tier": "BETA",  "enabled": true  },
+    "findwork":         { "adapter_file": "infra/adapters/findwork.ts",       "tier": "BETA",  "enabled": true  },
+    "hacker-news-jobs": { "adapter_file": "infra/adapters/yc_startups.ts",    "tier": "BETA",  "enabled": true  },
+    "google-jobs":      { "adapter_file": "infra/adapters/google_jobs.ts",    "tier": "BETA",  "enabled": false },
+    "linkedin-scout":   { "adapter_file": "infra/adapters/linkedin_scout.ts", "tier": "DELTA", "enabled": true  },
+    "otta":             { "adapter_file": "infra/adapters/otta.ts",           "tier": "DELTA", "enabled": true  },
+    "cord":             { "adapter_file": "infra/adapters/cord.ts",           "tier": "DELTA", "enabled": true  },
+    "hired":            { "adapter_file": "infra/adapters/hired.ts",          "tier": "DELTA", "enabled": true  },
+    "remote-co":        { "adapter_file": "infra/adapters/remote_co.ts",      "tier": "DELTA", "enabled": true  },
+    "infra-scraper-html": { "adapter_file": "infra/adapters/scraper_html.ts", "tier": "DELTA", "enabled": true  },
+    "weworkremotely":   { "adapter_file": "infra/adapters/weworkremotely.ts", "tier": "GAMMA", "enabled": true  },
+    "remote-ok":        { "adapter_file": "infra/adapters/remote_ok.ts",      "tier": "GAMMA", "enabled": true  },
+    "working-nomads":   { "adapter_file": "infra/adapters/working_nomads.ts", "tier": "GAMMA", "enabled": true  },
+    "himalayas":        { "adapter_file": "infra/adapters/himalayas.ts",      "tier": "BETA",  "enabled": true  },
+    "jobicy":           { "adapter_file": "infra/adapters/jobicy.ts",         "tier": "GAMMA", "enabled": true  },
+    "static-feed":      { "adapter_file": "infra/adapters/static_feed.ts",   "tier": "GAMMA", "enabled": true  },
+    "bamboohr":         { "adapter_file": "infra/adapters/bamboohr.ts",       "tier": "ATS",   "enabled": true  },
+    "recruitee":        { "adapter_file": "infra/adapters/recruitee.ts",      "tier": "ATS",   "enabled": true  },
+    "personio":         { "adapter_file": "infra/adapters/personio.ts",       "tier": "ATS",   "enabled": true  },
+    "teamtailor":       { "adapter_file": "infra/adapters/teamtailor.ts",     "tier": "ATS",   "enabled": true  },
+    "comeet":           { "adapter_file": "infra/adapters/comeet.ts",         "tier": "ATS",   "enabled": true  },
+    "jazzhr":           { "adapter_file": "infra/adapters/jazzhr.ts",         "tier": "ATS",   "enabled": true  },
+    "jobvite":          { "adapter_file": "infra/adapters/jobvite.ts",        "tier": "ATS",   "enabled": true  },
+    "workday":          { "adapter_file": "infra/adapters/workday_universal.ts","tier": "ATS",   "enabled": true  },
+    "apify-bridge":     { "adapter_file": "infra/adapters/wellfound.ts",        "tier": "BETA",  "enabled": true  }
+  }
+}
