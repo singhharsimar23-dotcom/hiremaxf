@@ -217,6 +217,9 @@ export const Pricing: React.FC<PricingProps> = ({ setPlan, setView, currentPlan,
         url.searchParams.set('metadata_user_id', user.id);
         url.searchParams.set('metadata_plan', id);
         url.searchParams.set('metadata_email', user.email);
+        // After payment, Dodo redirects user back to /dashboard
+        // This is the success redirect URL — user lands logged-in on dashboard
+        url.searchParams.set('redirect_url', `${window.location.origin}/dashboard`);
         
         window.location.href = url.toString();
       } catch (err) {

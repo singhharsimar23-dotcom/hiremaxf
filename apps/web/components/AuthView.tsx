@@ -26,7 +26,7 @@ const AuthView: React.FC<Props> = ({ onSuccess }) => {
       const isExtensionFlow = searchParams.get('redirect') === 'auth-bridge' || searchParams.get('ext_id');
       const redirectTo = isExtensionFlow
         ? window.location.origin + window.location.pathname + window.location.search
-        : window.location.origin + '/';
+        : window.location.origin + '/dashboard';  // Go straight to dashboard post-OAuth
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
