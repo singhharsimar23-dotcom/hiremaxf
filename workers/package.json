@@ -1,0 +1,20 @@
+{
+  "name": "hiremax-intelligence-workers",
+  "private": true,
+  "scripts": {
+    "deploy:pipeline": "cd workers/intelligence-pipeline && wrangler deploy",
+    "deploy:distributor": "cd workers/intelligence-distributor && wrangler deploy",
+    "deploy:content-factory": "cd workers/intelligence-content-factory && wrangler deploy",
+    "deploy:admin-api": "cd workers/intelligence-admin-api && wrangler deploy",
+    "deploy:all": "npm run deploy:admin-api && npm run deploy:content-factory && npm run deploy:pipeline && npm run deploy:distributor",
+    "dev:pipeline": "cd workers/intelligence-pipeline && wrangler dev",
+    "dev:admin-api": "cd workers/intelligence-admin-api && wrangler dev",
+    "dev:content-factory": "cd workers/intelligence-content-factory && wrangler dev",
+    "dev:distributor": "cd workers/intelligence-distributor && wrangler dev"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260610.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^3.114.17"
+  }
+}

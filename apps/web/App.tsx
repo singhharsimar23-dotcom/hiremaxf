@@ -37,6 +37,8 @@ const LinkedInOptimizerView = lazy(() => import('./components/LinkedInOptimizerV
 const TermsView = lazy(() => import('./components/TermsView').then(m => ({ default: m.TermsView })));
 const RefundView = lazy(() => import('./components/RefundView').then(m => ({ default: m.RefundView })));
 const PrivacyView = lazy(() => import('./components/PrivacyView').then(m => ({ default: m.PrivacyView })));
+const ResearchHubView = lazy(() => import('./components/ResearchHubView').then(m => ({ default: m.ResearchHubView })));
+const ResearchPostView = lazy(() => import('./components/ResearchPostView').then(m => ({ default: m.ResearchPostView })));
 import {
     ShieldCheck, Zap, Lock, Target, BarChart, ArrowRight, Sparkles,
     Shield, UploadCloud, Plus, Info, Circle, X, Loader2, AlertTriangle,
@@ -63,6 +65,7 @@ function App() {
       return 'landing';
     });
     const [teaserTarget, setTeaserTarget] = useState<AppView | null>(null);
+    const [researchSlug, setResearchSlug] = useState<string | null>(null);
     const [user, setUser] = useState<any>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(false);
@@ -156,13 +159,20 @@ function App() {
     // Handle basic URL-based routing for OAuth redirects and Back/Forward navigation
     useEffect(() => {
         const handlePopState = () => {
-            const path = window.location.pathname.replace('/', '');
+            const path = window.location.pathname.slice(1); // strip leading /
+            // Handle /research/:slug
+            if (path.startsWith('research/')) {
+                const slug = path.replace('research/', '');
+                if (slug) { setResearchSlug(slug); setView('research-post' as AppView); return; }
+            }
+            if (path === 'research') { setView('research' as AppView); setResearchSlug(null); return; }
             if (path && path !== view) {
                 const validViews: AppView[] = [
                     'landing', 'auth', 'auth-bridge', 'pricing', 'faq', 'contact', 'terms', 'privacy', 'refund',
                     'dashboard', 'profile', 'full-review', 'career-intelligence', 'market-outlook', 'applications',
                     'rebuild', 'rebuild-standalone', 'resume-editor', 'settings', 'billing', 'admin', 'tracker',
                     'interview-prep', 'cover-letter', 'linkedin-optimizer', 'history', 'preview', 'ai-review',
+                    'research', 'research-post',
                 ];
                 if (validViews.includes(path as AppView)) {
                     setView(path as AppView);
@@ -175,16 +185,25 @@ function App() {
         window.addEventListener('popstate', handlePopState);
 
         // Initial Hydration
-        const path = window.location.pathname.replace('/', '');
+        const path = window.location.pathname.slice(1); // strip leading /
         const searchParams = new URLSearchParams(window.location.search);
         const viewParam = searchParams.get('view') as AppView | null;
         const redirectParam = searchParams.get('redirect');
+
+        // Handle /research/:slug on initial load
+        if (path.startsWith('research/')) {
+            const slug = path.replace('research/', '');
+            if (slug) { setResearchSlug(slug); setView('research-post' as AppView); }
+        } else if (path === 'research') {
+            setView('research' as AppView);
+        }
 
         const validViews: AppView[] = [
             'landing', 'auth', 'auth-bridge', 'pricing', 'faq', 'contact', 'terms', 'privacy', 'refund',
             'dashboard', 'profile', 'full-review', 'career-intelligence', 'market-outlook', 'applications',
             'rebuild', 'rebuild-standalone', 'resume-editor', 'settings', 'billing', 'admin', 'tracker',
             'interview-prep', 'cover-letter', 'linkedin-optimizer', 'history', 'preview', 'ai-review',
+            'research', 'research-post',
         ];
 
         if (path === 'intelligence') {
@@ -778,6 +797,7 @@ function App() {
     };
 
     const isProtectedRoute = ['dashboard', 'applications', 'ai-review', 'full-review', 'career-intelligence', 'market-outlook', 'rebuild', 'rebuild-standalone', 'profile', 'history', 'resume-editor', 'settings', 'billing', 'interview-prep', 'cover-letter', 'tracker', 'linkedin-optimizer', 'preview', 'admin'].includes(view);
+    // research routes are public — no auth required
     const isAdminRoute = view === 'admin';
     const adminAllowed = isAdminUser(user?.email);
     const activeView = (isProtectedRoute && !loading && !user)
@@ -1072,6 +1092,28 @@ function App() {
                             {activeView === 'terms' && <TermsView setView={handleSetView} />}
                             {activeView === 'privacy' && <PrivacyView setView={handleSetView} />}
                             {activeView === 'refund' && <RefundView setView={handleSetView} />}
+
+                            {/* Research hub — public, no auth required */}
+                            {activeView === ('research' as AppView) && (
+                                <ResearchHubView
+                                    onViewPost={(slug) => {
+                                        setResearchSlug(slug);
+                                        setView('research-post' as AppView);
+                                        window.history.pushState({}, '', `/research/${slug}`);
+                                    }}
+                                />
+                            )}
+                            {activeView === ('research-post' as AppView) && researchSlug && (
+                                <ResearchPostView
+                                    slug={researchSlug}
+                                    onBack={() => {
+                                        setView('research' as AppView);
+                                        setResearchSlug(null);
+                                        window.history.pushState({}, '', '/research');
+                                    }}
+                                    onNavigate={handleSetView}
+                                />
+                            )}
 
                             {/* FIX 2: Ghost route stubs — prevent blank screens for defined-but-unrendered AppView values */}
                             {(['signal-hub', 'recruiter-scan', 'rejection-model', 'role-saturation', 'skill-radar', 'longevity-estimate', 'admin-ops'] as const).map(ghostView =>

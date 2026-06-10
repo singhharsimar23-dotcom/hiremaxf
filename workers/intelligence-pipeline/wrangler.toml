@@ -1,0 +1,18 @@
+name = "hiremax-intelligence-pipeline"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ENVIRONMENT = "production"
+SAM_EMAIL = "harsimar@hiremax.site"
+
+[triggers]
+crons = ["0 6 * * *"]
+
+# Secrets — set via: wrangler secret put SECRET_NAME
+# SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# GEMINI_API_KEY
+# BLS_API_KEY
+# FRED_API_KEY
+# RESEND_API_KEY
+# ADMIN_BASE_URL (e.g. https://www.hiremax.site/admin)

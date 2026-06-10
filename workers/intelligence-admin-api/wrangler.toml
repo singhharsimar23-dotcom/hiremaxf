@@ -1,0 +1,11 @@
+name = "hiremax-intelligence-admin-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ENVIRONMENT = "production"
+
+# Secrets — set via: wrangler secret put SECRET_NAME
+# SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# ADMIN_PASSWORD
+# CONTENT_FACTORY_URL (URL of intelligence-content-factory worker)

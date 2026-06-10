@@ -11,7 +11,8 @@ export type AppView =
   | 'signal-hub' | 'recruiter-scan' | 'rejection-model' | 'role-saturation'
   | 'skill-radar' | 'longevity-estimate' | 'admin-ops' | 'preview' | 'admin'
   | 'market-outlook' | 'interview-prep' | 'cover-letter' | 'tracker' | 'linkedin-optimizer'
-  | 'terms' | 'privacy' | 'refund';
+  | 'terms' | 'privacy' | 'refund'
+  | 'research' | 'research-post';
 
 export enum IdentityState {
   UNINITIALIZED = 'UNINITIALIZED',

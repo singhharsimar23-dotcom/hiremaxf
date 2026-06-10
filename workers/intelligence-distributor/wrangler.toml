@@ -1,0 +1,24 @@
+name = "hiremax-intelligence-distributor"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ENVIRONMENT = "production"
+SAM_EMAIL = "harsimar@hiremax.site"
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+# Secrets — set via: wrangler secret put SECRET_NAME
+# SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# RESEND_API_KEY
+# LINKEDIN_ACCESS_TOKEN
+# LINKEDIN_TOKEN_EXPIRES_AT
+# LINKEDIN_PERSON_ID
+# LINKEDIN_ORG_ID
+# REDDIT_CLIENT_ID
+# REDDIT_CLIENT_SECRET
+# REDDIT_ACCESS_TOKEN
+# REDDIT_ACCOUNT_AGE_DAYS
+# HN_USERNAME
+# HN_PASSWORD

@@ -3,7 +3,7 @@
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
-      "source": "/((?!assets/|pdf\\.worker|favicon|robots|sitemap).*)",
+      "source": "/((?!assets/|pdf\\.worker|favicon|robots|sitemap|research-sitemap|llms\\.txt).*)",
       "destination": "/index.html"
     }
   ],
