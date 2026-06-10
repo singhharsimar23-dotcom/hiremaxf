@@ -306,18 +306,41 @@ async function fetchRedditSentiment(env: Env): Promise<void> {
   const subreddits = ['jobs', 'cscareerquestions', 'recruitinghell', 'ExperiencedDevs'];
   const topicResults: Record<string, { sentiments: number[]; count: number }> = {};
 
-  for (const sub of subreddits) {
-    try {
-      const res = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=25`, {
-        headers: { 'User-Agent': 'HireMaxIntelligence/1.0' },
-      });
-      if (!res.ok) continue;
-      const data = await res.json() as any;
-      const posts = (data.data?.children || []).slice(0, 15);
+  try {
+    // 1. Fetch posts from all subreddits in parallel
+    const subRedditData = await Promise.all(
+      subreddits.map(async (sub) => {
+        try {
+          const res = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=25`, {
+            headers: { 'User-Agent': 'HireMaxIntelligence/1.0' },
+          });
+          if (!res.ok) return { sub, posts: [] };
+          const data = await res.json() as any;
+          return { sub, posts: (data.data?.children || []).slice(0, 15) };
+        } catch {
+          return { sub, posts: [] };
+        }
+      })
+    );
 
-      // Batch classify with Gemini (one call per subreddit to save quota)
-      const titlesText = posts.map((p: any, i: number) =>
-        `${i}: "${p.data.title}" (score: ${p.data.score})`
+    // 2. Batch all posts from all subreddits into one list
+    const allPostsToClassify: Array<{ sub: string; index: number; title: string; score: number }> = [];
+    let globalIndex = 0;
+    for (const item of subRedditData) {
+      for (const p of item.posts) {
+        allPostsToClassify.push({
+          sub: item.sub,
+          index: globalIndex++,
+          title: p.data.title,
+          score: p.data.score || 0
+        });
+      }
+    }
+
+    if (allPostsToClassify.length > 0) {
+      // 3. Classify all posts in a single Gemini call
+      const titlesText = allPostsToClassify.map(p =>
+        `${p.index} [r/${p.sub}]: "${p.title}" (score: ${p.score})`
       ).join('\n');
 
       const classifyPrompt = `Classify these Reddit job-related post titles. Return JSON array only.
@@ -332,19 +355,22 @@ ${titlesText}`;
       try {
         const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         classifications = JSON.parse(cleaned);
-      } catch { continue; }
-
-      for (const cls of classifications) {
-        const key = `${sub}_${cls.topic}`;
-        if (!topicResults[key]) topicResults[key] = { sentiments: [], count: 0 };
-        topicResults[key].sentiments.push(cls.sentiment);
-        topicResults[key].count++;
+      } catch {
+        console.error('[Reddit] Failed to parse classifications JSON');
       }
 
-      await sleep(1000); // spacing to avoid 429
-    } catch (e) {
-      console.error(`[Reddit] ${sub} failed:`, e);
+      for (const cls of classifications) {
+        const post = allPostsToClassify.find(p => p.index === cls.index);
+        if (post) {
+          const key = `${post.sub}_${cls.topic}`;
+          if (!topicResults[key]) topicResults[key] = { sentiments: [], count: 0 };
+          topicResults[key].sentiments.push(cls.sentiment);
+          topicResults[key].count++;
+        }
+      }
     }
+  } catch (e) {
+    console.error(`[Reddit] Fetch sentiment failed:`, e);
   }
 
   const points = [];
@@ -375,90 +401,122 @@ ${titlesText}`;
 
 // HN: Who Is Hiring thread analysis
 async function fetchHN(env: Env): Promise<void> {
-  const submittedRes = await fetch('https://hacker-news.firebaseio.com/v0/user/whoishiring/submitted.json');
-  if (!submittedRes.ok) { console.error('[HN] Failed to fetch whoishiring submissions'); return; }
-  const itemIds = await submittedRes.json() as number[];
+  try {
+    const submittedRes = await fetch('https://hacker-news.firebaseio.com/v0/user/whoishiring/submitted.json');
+    if (!submittedRes.ok) { console.error('[HN] Failed to fetch whoishiring submissions'); return; }
+    const itemIds = await submittedRes.json() as number[];
 
-  // Get the first few to find the current "Who Is Hiring?" thread
-  let hiringItemId: number | null = null;
-  for (const itemId of itemIds.slice(0, 15)) {
-    const itemRes = await fetch(`https://hacker-news.firebaseio.com/v0/item/${itemId}.json`);
-    const item = await itemRes.json() as any;
-    if (item.title && item.title.includes('Who is Hiring')) {
-      hiringItemId = itemId;
-      break;
+    // Parallel fetch recent item headers to find "Who Is Hiring" thread
+    const recentItems = await Promise.all(
+      itemIds.slice(0, 15).map(async (id) => {
+        try {
+          const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`);
+          if (!res.ok) return null;
+          return await res.json() as any;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    let hiringItemId: number | null = null;
+    let threadTitle = '';
+    for (const item of recentItems) {
+      if (item && item.title && item.title.includes('Who is Hiring')) {
+        hiringItemId = item.id;
+        threadTitle = item.title;
+        break;
+      }
     }
-  }
-  if (!hiringItemId) { console.log('[HN] No current hiring thread found'); return; }
+    if (!hiringItemId) { console.log('[HN] No current hiring thread found'); return; }
 
-  // Fetch the thread
-  const threadRes = await fetch(`https://hacker-news.firebaseio.com/v0/item/${hiringItemId}.json`);
-  const thread = await threadRes.json() as any;
-  const commentIds = (thread.kids || []).slice(0, 100);
-  const commentTexts: string[] = [];
+    // Fetch the thread
+    const threadRes = await fetch(`https://hacker-news.firebaseio.com/v0/item/${hiringItemId}.json`);
+    const thread = await threadRes.json() as any;
+    const commentIds = (thread.kids || []).slice(0, 100);
+    const commentTexts: string[] = [];
 
-  for (const cid of commentIds.slice(0, 10)) {
-    const cRes = await fetch(`https://hacker-news.firebaseio.com/v0/item/${cid}.json`);
-    const c = await cRes.json() as any;
-    if (c.text && c.text.length > 10) {
-      const stripped = c.text.replace(/<[^>]+>/g, '').slice(0, 200);
-      commentTexts.push(stripped);
+    // Parallel fetch comments
+    const comments = await Promise.all(
+      commentIds.slice(0, 10).map(async (cid) => {
+        try {
+          const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${cid}.json`);
+          if (!res.ok) return null;
+          return await res.json() as any;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    for (const c of comments) {
+      if (c && c.text && c.text.length > 10) {
+        const stripped = c.text.replace(/<[^>]+>/g, '').slice(0, 200);
+        commentTexts.push(stripped);
+      }
     }
-  }
 
-  // Extract top mentioned skills via Gemini
-  const skillPrompt = `Extract the top 10 most mentioned tech skills from these HN job listings. Return JSON only: {"skills": [{"skill": "name", "mentions": N}]}. No explanation.
+    if (commentTexts.length === 0) {
+      console.log('[HN] No comments fetched');
+      return;
+    }
+
+    // Extract top mentioned skills via Gemini
+    const skillPrompt = `Extract the top 10 most mentioned tech skills from these HN job listings. Return JSON only: {"skills": [{"skill": "name", "mentions": N}]}. No explanation.
 
 Listings sample:
-${commentTexts.slice(0, 10).join('\n\n').slice(0, 3000)}`;
+${commentTexts.join('\n\n').slice(0, 3000)}`;
 
-  const skillResult = await callGemini(env, skillPrompt);
-  let skills: Array<{ skill: string; mentions: number }> = [];
-  try {
-    const cleaned = skillResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    skills = JSON.parse(cleaned).skills || [];
-  } catch { console.error('[HN] Failed to parse skills JSON'); }
+    const skillResult = await callGemini(env, skillPrompt);
+    let skills: Array<{ skill: string; mentions: number }> = [];
+    try {
+      const cleaned = skillResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      skills = JSON.parse(cleaned).skills || [];
+    } catch { console.error('[HN] Failed to parse skills JSON'); }
 
-  const today = new Date().toISOString().split('T')[0];
-  const points = [];
+    const today = new Date().toISOString().split('T')[0];
+    const points = [];
 
-  for (const s of skills.slice(0, 10)) {
+    for (const s of skills.slice(0, 10)) {
+      points.push({
+        source_name: 'hn_jobs',
+        data_type: 'skill_demand',
+        geography: 'Global',
+        sector: 'Tech',
+        metric_name: `hn_hiring_skill_${s.skill.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        metric_value: s.mentions,
+        metric_unit: 'mention_count',
+        period_date: today,
+        period_label: today,
+        raw_payload: { skill: s.skill, thread_id: hiringItemId, total_comments: commentIds.length },
+      });
+    }
+
+    // Store total job count
     points.push({
       source_name: 'hn_jobs',
-      data_type: 'skill_demand',
+      data_type: 'job_volume',
       geography: 'Global',
       sector: 'Tech',
-      metric_name: `hn_hiring_skill_${s.skill.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-      metric_value: s.mentions,
-      metric_unit: 'mention_count',
+      metric_name: 'hn_hiring_thread_total_jobs',
+      metric_value: commentIds.length,
+      metric_unit: 'job_posts',
       period_date: today,
       period_label: today,
-      raw_payload: { skill: s.skill, thread_id: hiringItemId, total_comments: commentIds.length },
+      raw_payload: { thread_id: hiringItemId, thread_title: threadTitle || thread.title },
     });
+
+    if (points.length > 0) {
+      await supabaseInsert(env, 'raw_data_points', points as any);
+    }
+
+    await supabasePatch(env, 'data_sources', 'source_name=eq.hn_jobs', {
+      last_fetched_at: new Date().toISOString(),
+    });
+    console.log(`[HN] Fetched ${skills.length} skills from thread ${hiringItemId}`);
+  } catch (e) {
+    console.error('[HN] Fetch failed:', e);
   }
-
-  // Store total job count
-  points.push({
-    source_name: 'hn_jobs',
-    data_type: 'job_volume',
-    geography: 'Global',
-    sector: 'Tech',
-    metric_name: 'hn_hiring_thread_total_jobs',
-    metric_value: commentIds.length,
-    metric_unit: 'job_posts',
-    period_date: today,
-    period_label: today,
-    raw_payload: { thread_id: hiringItemId, thread_title: thread.title },
-  });
-
-  if (points.length > 0) {
-    await supabaseInsert(env, 'raw_data_points', points as any);
-  }
-
-  await supabasePatch(env, 'data_sources', 'source_name=eq.hn_jobs', {
-    last_fetched_at: new Date().toISOString(),
-  });
-  console.log(`[HN] Fetched ${skills.length} skills from thread ${hiringItemId}`);
 }
 
 // ============================================================
