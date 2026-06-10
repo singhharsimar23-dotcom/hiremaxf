@@ -835,7 +835,7 @@ function App() {
     return (
         <div className="min-h-screen bg-[#0F1117] flex flex-col antialiased">
             {showNav && (
-                <Header currentView={teaserTarget || activeView} setView={handleSetView} plan={plan} onNewResume={() => handleSetView('resume-editor')} />
+                <Header currentView={teaserTarget || activeView} setView={handleSetView} plan={plan} user={user} onNewResume={() => handleSetView('resume-editor')} />
             )}
 
             {hasActiveJob && showNav && activeRunningJob && (

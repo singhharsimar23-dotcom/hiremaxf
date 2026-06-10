@@ -27,12 +27,14 @@ import {
   FileSearch
 } from 'lucide-react';
 import { AppView, UserPlan } from '../types';
+import { isAdminUser } from '../lib/admin';
 
 interface HeaderProps {
   currentView: AppView;
   setView: (v: AppView) => void;
   plan: UserPlan;
   onNewResume: () => void;
+  user?: any;
 }
 
 // One entry per lazy-loaded view. Keys must match the `targetView` prop you pass each NavLink.
@@ -93,7 +95,7 @@ const NavLink: React.FC<{
   );
 };
 
-const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume }) => {
+const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume, user }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -260,6 +262,16 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
               <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">{plan} Plan</p>
             </div>
 
+            {isAdminUser(user?.email) && (
+              <button
+                onClick={() => { setView('admin'); setDropdownOpen(false); }}
+                className="w-full flex items-center gap-3 px-5 py-3 text-amber-500 hover:text-amber-400 hover:bg-amber-500/5 transition-all text-sm font-bold border-b border-[#2D313D]/50 pb-3 mb-1"
+              >
+                <Shield size={18} className="text-amber-500 animate-pulse" />
+                Admin Intelligence
+              </button>
+            )}
+
             <button
               onClick={() => { setView('settings'); setDropdownOpen(false); }}
               className="w-full flex items-center gap-3 px-5 py-3 text-slate-400 hover:text-white hover:bg-white/5 transition-all text-sm font-bold"
@@ -333,6 +345,9 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
 
             <div className="flex flex-col gap-2">
               <NavLink label="Dashboard" active={currentView === 'dashboard'} onClick={() => { setView('dashboard'); setMobileMenuOpen(false); }} icon={<LayoutDashboard size={18} />} targetView="dashboard" />
+              {isAdminUser(user?.email) && (
+                <NavLink label="Admin Intelligence" active={currentView === 'admin'} onClick={() => { setView('admin'); setMobileMenuOpen(false); }} icon={<Shield size={18} className="text-amber-500" />} targetView="admin" />
+              )}
               {/* Hiding Profile option from mobile sidebar as per user request (don't delete)
               <NavLink label="Profile" active={currentView === 'profile'} onClick={() => { setView('profile'); setMobileMenuOpen(false); }} icon={<User size={18} />} targetView="profile" />
               */}
