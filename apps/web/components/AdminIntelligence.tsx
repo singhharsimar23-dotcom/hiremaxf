@@ -289,6 +289,8 @@ export const AdminIntelligence: React.FC = () => {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('briefs');
   const [adminPassword, setAdminPassword] = useState('');
+  const [requireManualApproval, setRequireManualApproval] = useState<boolean>(true);
+  const [manualApprovalLoading, setManualApprovalLoading] = useState<boolean>(false);
 
   // Weights tab state
   const [definitions, setDefinitions] = useState<WeightDefinition[]>([]);
@@ -316,7 +318,15 @@ export const AdminIntelligence: React.FC = () => {
   // Auth check
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      setAuthorized(isAdminUser(user?.email));
+      const isAdmin = isAdminUser(user?.email);
+      setAuthorized(isAdmin);
+      if (user && isAdmin) {
+        supabase.from('profiles').select('require_manual_approval').eq('id', user.id).maybeSingle().then(({ data }) => {
+          if (data) {
+            setRequireManualApproval(data.require_manual_approval !== false);
+          }
+        });
+      }
     });
     // Detect URL hash for tab
     if (window.location.hash === '#intelligence-briefs') setActiveTab('briefs');
@@ -399,6 +409,25 @@ export const AdminIntelligence: React.FC = () => {
     finally { setRunningOpt(false); }
   };
 
+  const handleToggleManualApproval = async () => {
+    setManualApprovalLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not logged in');
+      const newValue = !requireManualApproval;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ require_manual_approval: newValue })
+        .eq('id', user.id);
+      if (error) throw error;
+      setRequireManualApproval(newValue);
+    } catch (e: any) {
+      alert('Failed to update setting: ' + e.message);
+    } finally {
+      setManualApprovalLoading(false);
+    }
+  };
+
   // Performance chart data
   const chartData = Object.keys(PILLAR_LABELS).map(pillar => {
     const total = perfData.filter(p => p.pillar === pillar).reduce((s, p) => s + (p.ai_citation_sessions || 0), 0);
@@ -465,6 +494,33 @@ export const AdminIntelligence: React.FC = () => {
         {/* ==================== BRIEFS TAB ==================== */}
         {activeTab === 'briefs' && (
           <div className="space-y-4">
+            {/* Autonomous Mode Toggle Banner */}
+            <div className="bg-[#12141C] border border-[#23262F] rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h3 className="text-white font-bold text-base flex items-center gap-2">
+                  <Zap size={16} className={requireManualApproval ? "text-slate-400" : "text-amber-400 animate-pulse"} />
+                  Autonomous Publishing Mode
+                </h3>
+                <p className="text-xs text-slate-400 max-w-xl">
+                  {requireManualApproval 
+                    ? "Currently in Manual Mode. New briefs will be sent to your email and require you to add an angle and approve them before publishing."
+                    : "Currently in Fully Autonomous Mode. New briefs will be automatically approved and published every hour."}
+                </p>
+              </div>
+              <button 
+                onClick={handleToggleManualApproval}
+                disabled={manualApprovalLoading}
+                className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
+                  requireManualApproval 
+                    ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700" 
+                    : "bg-amber-600 hover:bg-amber-500 text-white"
+                }`}
+              >
+                {manualApprovalLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                {requireManualApproval ? "Enable Autonomous Mode" : "Disable Autonomous Mode"}
+              </button>
+            </div>
+
             {/* Filter bar */}
             <div className="flex items-center justify-between">
               <div className="flex gap-2">

@@ -25,12 +25,14 @@ interface ResearchBrief {
 // SUPABASE HELPERS
 // ============================================================
 async function supabaseQuery(env: Env, path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+  const url = env.SUPABASE_URL?.trim();
+  const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const res = await fetch(`${url}/rest/v1/${path}`, {
     ...opts,
     headers: {
       'Content-Type': 'application/json',
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: key,
+      Authorization: `Bearer ${key}`,
       Prefer: 'return=representation',
       ...(opts.headers as Record<string, string> || {}),
     },
@@ -45,23 +47,43 @@ async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 // ============================================================
 // GEMINI
 // ============================================================
-async function callGemini(env: Env, prompt: string): Promise<string> {
+async function callGemini(env: Env, prompt: string, forceFlash15 = false): Promise<string> {
+  const model = forceFlash15 ? 'gemini-2.5-flash' : 'gemini-2.0-flash';
+  const apiKey = env.GEMINI_API_KEY?.trim();
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
-        }),
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+          }),
+        }
+      );
+      if (res.status === 429) {
+        if (!forceFlash15) {
+          console.warn(`[Gemini] 429 Rate limited on ${model}. Falling back to gemini-2.5-flash...`);
+          return callGemini(env, prompt, true);
+        }
+        console.warn(`[Gemini] Attempt ${attempt}: 429 Rate limited on ${model}. Retrying in 10s...`);
+        await sleep(10000);
+        continue;
       }
-    );
-    if (res.status === 429) { await sleep(30000); continue; }
-    if (!res.ok) throw new Error(`Gemini ${res.status}`);
-    const data = await res.json() as any;
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+      const data = await res.json() as any;
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } catch (e) {
+      console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
+      if (!forceFlash15 && attempt === 2) {
+        console.warn(`[Gemini] Failed with ${model}. Falling back to gemini-2.5-flash...`);
+        return callGemini(env, prompt, true);
+      }
+      if (attempt === 2) throw e;
+      await sleep(2000);
+    }
   }
   throw new Error('Gemini exhausted retries');
 }
@@ -205,8 +227,9 @@ Pass threshold: total >= 7.
 Content sample: ${content.slice(0, 800)}`;
   try {
     const result = await callGemini(env, checkPrompt);
-    const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(cleaned);
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found");
+    const parsed = JSON.parse(jsonMatch[0].trim());
     console.log(`[QA] ${type}: ${parsed.total}/10 — ${parsed.pass ? 'PASS' : 'FAIL'}`);
     return parsed.pass;
   } catch {
@@ -231,7 +254,7 @@ function setUTCHour(date: Date, hour: number): Date {
 
 function scheduleContent(type: string, approvedAt: Date): Date | null {
   const schedule: Record<string, () => Date | null> = {
-    blog_post: () => new Date(approvedAt.getTime() + 20 * 60 * 1000), // +20 min
+    blog_post: () => new Date(approvedAt.getTime() + 5 * 60 * 1000), // +5 min
     linkedin_long: () => setUTCHour(addDays(approvedAt, 1), 7),
     linkedin_short_1: () => setUTCHour(addDays(approvedAt, 1), 12),
     linkedin_carousel: () => setUTCHour(addDays(approvedAt, 2), 7),
@@ -277,7 +300,7 @@ function extractFAQPairs(markdown: string): Array<{ question: string; answer: st
 // ============================================================
 // MAIN GENERATION FLOW
 // ============================================================
-async function generateAllContent(env: Env, briefId: string): Promise<void> {
+async function generateAllContent(env: Env, briefId: string, origin: string): Promise<void> {
   // Fetch brief
   const briefs = await supabaseQuery(env, `research_briefs?id=eq.${briefId}&limit=1`) as ResearchBrief[];
   if (!briefs || briefs.length === 0) throw new Error(`Brief ${briefId} not found`);
@@ -291,102 +314,134 @@ async function generateAllContent(env: Env, briefId: string): Promise<void> {
   ];
   if (brief.citation_potential === 'high') contentTypes.push('hn_post');
 
-  for (const contentType of contentTypes) {
-    try {
-      console.log(`[Factory] Generating: ${contentType}`);
-      const prompt = buildPrompt(brief, contentType);
-      let content = await callGemini(env, prompt);
+  // Query existing content pieces for this brief
+  const existing = await supabaseQuery(env, `content_pieces?brief_id=eq.${briefId}&select=content_type`) as Array<{ content_type: string }>;
+  const existingTypes = new Set(existing?.map(e => e.content_type) || []);
 
-      // Quality gate — regenerate once if fails
-      const passed = await qualityCheck(env, content, contentType);
-      if (!passed) {
-        console.log(`[Factory] QA failed for ${contentType} — regenerating...`);
-        await sleep(4000);
-        content = await callGemini(env, prompt + '\n\nPrevious attempt scored below 7/10 on: specific numbers, breaking conventional wisdom. Fix both.');
-      }
+  // Find the first content type that is not yet generated
+  const contentType = contentTypes.find(t => !existingTypes.has(t));
+  if (!contentType) {
+    console.log(`[Factory] All content formats for brief ${briefId} have already been generated.`);
+    return;
+  }
 
-      const scheduledFor = scheduleContent(contentType, approvedAt);
-      const slug = contentType === 'blog_post' ? generateSlug(brief.title) : null;
+  console.log(`[Factory] Chained execution: Generating ${contentType} for brief ${briefId}...`);
+  try {
+    const prompt = buildPrompt(brief, contentType);
+    let content = await callGemini(env, prompt);
 
-      // Build SEO meta for blog posts
-      const seoMeta = contentType === 'blog_post' ? {
+    // Quality check — regenerate once if fails
+    const passed = await qualityCheck(env, content, contentType);
+    if (!passed) {
+      console.log(`[Factory] QA failed for ${contentType} — regenerating...`);
+      await sleep(2000);
+      content = await callGemini(env, prompt + '\n\nPrevious attempt scored below 7/10 on: specific numbers, breaking conventional wisdom. Fix both.');
+    }
+
+    const scheduledFor = scheduleContent(contentType, approvedAt);
+    const slug = contentType === 'blog_post' ? generateSlug(brief.title) : null;
+
+    // Build SEO meta for blog posts
+    const seoMeta = contentType === 'blog_post' ? {
+      description: brief.core_finding.slice(0, 160),
+      keywords: brief.target_keywords.join(', '),
+      og_title: brief.title,
+      og_description: brief.core_finding.slice(0, 100),
+    } : {};
+
+    // Article + Dataset + FAQ schema for blog posts
+    const schemaMarkup = contentType === 'blog_post' ? {
+      article: {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: brief.title,
         description: brief.core_finding.slice(0, 160),
+        author: { '@type': 'Organization', name: 'HireMax Intelligence', url: 'https://www.hiremax.site' },
+        publisher: { '@type': 'Organization', name: 'HireMax', url: 'https://www.hiremax.site' },
         keywords: brief.target_keywords.join(', '),
-        og_title: brief.title,
-        og_description: brief.core_finding.slice(0, 100),
-      } : {};
+      },
+      dataset: {
+        '@context': 'https://schema.org',
+        '@type': 'Dataset',
+        name: `HireMax ${brief.content_pillar} Intelligence`,
+        description: brief.core_finding.slice(0, 160),
+        creator: { '@type': 'Organization', name: 'HireMax Intelligence' },
+        license: 'https://creativecommons.org/licenses/by/4.0/',
+        url: slug ? `https://www.hiremax.site/research/${slug}` : '',
+      },
+    } : {};
 
-      // Article + Dataset + FAQ schema for blog posts
-      const schemaMarkup = contentType === 'blog_post' ? {
-        article: {
-          '@context': 'https://schema.org',
-          '@type': 'Article',
-          headline: brief.title,
-          description: brief.core_finding.slice(0, 160),
-          author: { '@type': 'Organization', name: 'HireMax Intelligence', url: 'https://www.hiremax.site' },
-          publisher: { '@type': 'Organization', name: 'HireMax', url: 'https://www.hiremax.site' },
-          keywords: brief.target_keywords.join(', '),
-        },
-        dataset: {
-          '@context': 'https://schema.org',
-          '@type': 'Dataset',
-          name: `HireMax ${brief.content_pillar} Intelligence`,
-          description: brief.core_finding.slice(0, 160),
-          creator: { '@type': 'Organization', name: 'HireMax Intelligence' },
-          license: 'https://creativecommons.org/licenses/by/4.0/',
-          url: slug ? `https://www.hiremax.site/research/${slug}` : '',
-        },
-      } : {};
+    // Insert into content_pieces
+    const pieceData: Record<string, unknown> = {
+      brief_id: briefId,
+      content_type: contentType,
+      title: brief.title,
+      slug,
+      content,
+      schema_markup: schemaMarkup,
+      seo_meta: seoMeta,
+      status: scheduledFor ? 'scheduled' : 'pending',
+      scheduled_for: scheduledFor?.toISOString() || null,
+      platform: contentType.startsWith('linkedin') ? 'linkedin'
+        : contentType === 'reddit_post' ? 'reddit'
+        : contentType === 'hn_post' ? 'hn'
+        : contentType === 'newsletter_section' ? 'newsletter'
+        : 'blog',
+    };
 
-      // Insert into content_pieces
-      const pieceData: Record<string, unknown> = {
-        brief_id: briefId,
-        content_type: contentType,
-        title: brief.title,
-        slug,
-        content,
-        schema_markup: schemaMarkup,
-        seo_meta: seoMeta,
-        status: scheduledFor ? 'scheduled' : 'pending',
-        scheduled_for: scheduledFor?.toISOString() || null,
-        platform: contentType.startsWith('linkedin') ? 'linkedin'
-          : contentType === 'reddit_post' ? 'reddit'
-          : contentType === 'hn_post' ? 'hn'
-          : contentType === 'newsletter_section' ? 'newsletter'
-          : 'blog',
-      };
+    await supabaseQuery(env, 'content_pieces', {
+      method: 'POST',
+      body: JSON.stringify(pieceData),
+      headers: { Prefer: 'return=minimal' },
+    });
 
-      await supabaseQuery(env, 'content_pieces', {
+    // For blog posts, also insert into blog_posts table
+    if (contentType === 'blog_post' && slug) {
+      const faqPairs = extractFAQPairs(content);
+      await supabaseQuery(env, 'blog_posts', {
         method: 'POST',
-        body: JSON.stringify(pieceData),
+        body: JSON.stringify({
+          brief_id: briefId,
+          slug,
+          title: brief.title,
+          content_markdown: content,
+          seo_meta: seoMeta,
+          schema_markup: schemaMarkup,
+          pillar: brief.content_pillar,
+          faq_pairs: faqPairs,
+          status: 'draft', // Distributor publishes it when scheduled_for is due
+        }),
         headers: { Prefer: 'return=minimal' },
       });
-
-      // For blog posts, also insert into blog_posts table
-      if (contentType === 'blog_post' && slug) {
-        const faqPairs = extractFAQPairs(content);
-        await supabaseQuery(env, 'blog_posts', {
-          method: 'POST',
-          body: JSON.stringify({
-            brief_id: briefId,
-            slug,
-            title: brief.title,
-            content_markdown: content,
-            seo_meta: seoMeta,
-            schema_markup: schemaMarkup,
-            pillar: brief.content_pillar,
-            faq_pairs: faqPairs,
-            status: 'draft', // Distributor publishes it when scheduled_for is due
-          }),
-          headers: { Prefer: 'return=minimal' },
-        });
-      }
-
-      console.log(`[Factory] ✅ ${contentType} created${scheduledFor ? ` (scheduled: ${scheduledFor.toISOString()})` : ''}`);
-      await sleep(4000); // 4s between Gemini calls = safe under 15 RPM
-    } catch (e) {
-      console.error(`[Factory] ❌ Failed ${contentType}:`, e);
     }
+
+    console.log(`[Factory] ✅ ${contentType} created successfully.`);
+
+    // Find if there is a next content type in the list to chain
+    const remainingTypes = contentTypes.filter(t => t !== contentType && !existingTypes.has(t));
+    if (remainingTypes.length > 0) {
+      console.log(`[Factory] Chaining to next type. Remaining types count: ${remainingTypes.length}`);
+      await sleep(1000);
+      try {
+        console.log(`[Factory] Triggering self webhook: ${origin}/generate`);
+        const res = await fetch(`${origin}/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${env.ADMIN_PASSWORD?.trim()}`,
+          },
+          body: JSON.stringify({ briefId }),
+        });
+        console.log(`[Factory] Self webhook response status: ${res.status}`);
+      } catch (triggerError) {
+        console.error(`[Factory] Failed to chain trigger self-webhook:`, triggerError);
+      }
+    } else {
+      console.log(`[Factory] Chained generation complete. All formats generated for brief ${briefId}.`);
+    }
+
+  } catch (e) {
+    console.error(`[Factory] ❌ Failed to generate ${contentType}:`, e);
   }
 }
 
@@ -394,7 +449,7 @@ async function generateAllContent(env: Env, briefId: string): Promise<void> {
 // WORKER ENTRY
 // ============================================================
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -414,7 +469,7 @@ export default {
 
     // Auth check
     const auth = request.headers.get('Authorization') || '';
-    if (auth.replace('Bearer ', '') !== env.ADMIN_PASSWORD) {
+    if (auth.replace('Bearer ', '').trim() !== env.ADMIN_PASSWORD?.trim()) {
       return new Response('Unauthorized', { status: 401 });
     }
 
@@ -423,12 +478,18 @@ export default {
       return new Response(JSON.stringify({ error: 'briefId required' }), { status: 400 });
     }
 
-    // Run generation in background (don't block response)
-    const ctx = { waitUntil: (p: Promise<any>) => p };
-    generateAllContent(env, body.briefId).catch(e => console.error('[Factory] Generation failed:', e));
+    const origin = new URL(request.url).origin;
+
+    // Run generation in background using native ExecutionContext
+    ctx.waitUntil(
+      generateAllContent(env, body.briefId, origin).catch(e => console.error('[Factory] Generation failed:', e))
+    );
 
     return new Response(JSON.stringify({ ok: true, briefId: body.briefId, message: 'Generation started' }), {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': 'https://www.hiremax.site',
+      },
     });
   },
 };

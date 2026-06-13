@@ -11,6 +11,8 @@ interface Env {
   RESEND_API_KEY: string;
   SAM_EMAIL: string;
   ADMIN_BASE_URL: string;
+  CONTENT_FACTORY_URL: string;
+  ADMIN_PASSWORD: string;
 }
 
 // ============================================================
@@ -43,12 +45,14 @@ const CONTENT_PILLARS: Record<string, { name: string; contrarian_frame: string }
 // SUPABASE HELPERS
 // ============================================================
 async function supabaseInsert(env: Env, table: string, row: Record<string, unknown> | Record<string, unknown>[]) {
-  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}`, {
+  const url = env.SUPABASE_URL?.trim();
+  const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const res = await fetch(`${url}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: key,
+      Authorization: `Bearer ${key}`,
       Prefer: 'return=minimal',
     },
     body: JSON.stringify(row),
@@ -60,10 +64,12 @@ async function supabaseInsert(env: Env, table: string, row: Record<string, unkno
 }
 
 async function supabaseSelect<T>(env: Env, path: string): Promise<T[]> {
-  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+  const url = env.SUPABASE_URL?.trim();
+  const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const res = await fetch(`${url}/rest/v1/${path}`, {
     headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: key,
+      Authorization: `Bearer ${key}`,
     },
   });
   if (!res.ok) throw new Error(`Supabase select error: ${await res.text()}`);
@@ -71,12 +77,14 @@ async function supabaseSelect<T>(env: Env, path: string): Promise<T[]> {
 }
 
 async function supabasePatch(env: Env, table: string, filter: string, data: Record<string, unknown>) {
-  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+  const url = env.SUPABASE_URL?.trim();
+  const key = env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const res = await fetch(`${url}/rest/v1/${table}?${filter}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      apikey: key,
+      Authorization: `Bearer ${key}`,
       Prefer: 'return=minimal',
     },
     body: JSON.stringify(data),
@@ -87,22 +95,28 @@ async function supabasePatch(env: Env, table: string, filter: string, data: Reco
 // ============================================================
 // GEMINI HELPER
 // ============================================================
-async function callGemini(env: Env, prompt: string, retries = 2): Promise<string> {
+async function callGemini(env: Env, prompt: string, retries = 2, forceFlash15 = false): Promise<string> {
+  const model = forceFlash15 ? 'gemini-2.5-flash' : 'gemini-2.0-flash';
+  const apiKey = env.GEMINI_API_KEY?.trim();
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+            generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
           }),
         }
       );
       if (res.status === 429) {
-        console.warn(`[Gemini] Attempt ${attempt}: 429 Rate limited. Retrying in 2s...`);
+        if (!forceFlash15) {
+          console.warn(`[Gemini] 429 Rate limited on ${model}. Falling back to gemini-2.5-flash...`);
+          return callGemini(env, prompt, retries, true);
+        }
+        console.warn(`[Gemini] Attempt ${attempt}: 429 Rate limited on ${model}. Retrying in 2s...`);
         await sleep(2000);
         continue;
       }
@@ -110,12 +124,30 @@ async function callGemini(env: Env, prompt: string, retries = 2): Promise<string
       const data = await res.json() as any;
       return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     } catch (e) {
-      console.error(`[Gemini] Attempt ${attempt} failed:`, e);
+      console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
+      if (!forceFlash15 && attempt === retries) {
+        console.warn(`[Gemini] Failed with ${model}. Falling back to gemini-2.5-flash...`);
+        return callGemini(env, prompt, retries, true);
+      }
       if (attempt === retries) throw e;
       await sleep(1000);
     }
   }
   return '';
+}
+
+async function generateSamsAngle(env: Env, briefTitle: string, coreFinding: string, contrarianAngle: string): Promise<string> {
+  const prompt = `You are Sam, the founder of HireMax. Write a 1-3 sentence personal perspective/angle on this labor market finding.
+Style: Extremely direct, contrarian, zero corporate fluff, sounding like Paul Graham. 
+Speak in the first person ("I think...", "We're seeing..."). Highlight what this means for job seekers right now.
+
+Brief Title: ${briefTitle}
+Core Finding: ${coreFinding}
+Contrarian Angle: ${contrarianAngle}
+
+Return only the 1-3 sentences of your perspective. No tags, no explanations.`;
+  const result = await callGemini(env, prompt);
+  return result.trim().replace(/^"|"$/g, '');
 }
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
@@ -353,10 +385,14 @@ ${titlesText}`;
       const result = await callGemini(env, classifyPrompt);
       let classifications: Array<{ index: number; topic: string; sentiment: number }> = [];
       try {
-        const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        classifications = JSON.parse(cleaned);
-      } catch {
-        console.error('[Reddit] Failed to parse classifications JSON');
+        const jsonMatch = result.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          classifications = JSON.parse(jsonMatch[0].trim());
+        } else {
+          console.error('[Reddit] No JSON array found in Gemini response:', result);
+        }
+      } catch (e) {
+        console.error('[Reddit] Failed to parse classifications JSON:', e);
       }
 
       for (const cls of classifications) {
@@ -438,7 +474,7 @@ async function fetchHN(env: Env): Promise<void> {
 
     // Parallel fetch comments
     const comments = await Promise.all(
-      commentIds.slice(0, 10).map(async (cid) => {
+      commentIds.slice(0, 10).map(async (cid: number) => {
         try {
           const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${cid}.json`);
           if (!res.ok) return null;
@@ -470,9 +506,13 @@ ${commentTexts.join('\n\n').slice(0, 3000)}`;
     const skillResult = await callGemini(env, skillPrompt);
     let skills: Array<{ skill: string; mentions: number }> = [];
     try {
-      const cleaned = skillResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      skills = JSON.parse(cleaned).skills || [];
-    } catch { console.error('[HN] Failed to parse skills JSON'); }
+      const jsonMatch = skillResult.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        skills = JSON.parse(jsonMatch[0].trim()).skills || [];
+      } else {
+        console.error('[HN] No JSON object found in Gemini response:', skillResult);
+      }
+    } catch (e) { console.error('[HN] Failed to parse skills JSON:', e); }
 
     const today = new Date().toISOString().split('T')[0];
     const points = [];
@@ -650,7 +690,7 @@ async function detectAnomalies(env: Env): Promise<void> {
 // ============================================================
 // STAGE 3: BRIEF GENERATOR
 // ============================================================
-async function generateBrief(env: Env): Promise<{ id: string; title: string; core_finding: string; citation_potential: string } | null> {
+async function generateBrief(env: Env, requireManualApproval: boolean): Promise<{ id: string; title: string; core_finding: string; citation_potential: string } | null> {
   const signals = await supabaseSelect<any>(
     env,
     'trend_signals?significance_score=gte.0.6&used_in_content=eq.false&order=significance_score.desc&limit=1'
@@ -688,15 +728,35 @@ Output this exact JSON structure:
   const result = await callGemini(env, briefPrompt);
   let brief: any;
   try {
-    const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    brief = JSON.parse(cleaned);
+    const jsonMatch = result.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON object found in Gemini response");
+    brief = JSON.parse(jsonMatch[0].trim());
   } catch (e) {
-    console.error('[Brief] Failed to parse Gemini JSON:', result.slice(0, 200));
+    console.error('[Brief] Failed to parse Gemini JSON:', e, 'Raw result:', result);
     return null;
   }
 
-  // Insert brief
   const briefId = crypto.randomUUID();
+  const contrarianAngle = brief.conventional_wisdom_broken || signal.contrarian_angle;
+
+  let samsAngle = '';
+  let status = 'awaiting_angle';
+  let nowIso = null;
+
+  if (!requireManualApproval) {
+    console.log("[Brief] Autonomous mode active: Generating Sam's angle...");
+    try {
+      samsAngle = await generateSamsAngle(env, brief.title, brief.core_finding, contrarianAngle);
+      status = 'approved';
+      nowIso = new Date().toISOString();
+      console.log(`[Brief] Automatically generated Sam's angle: "${samsAngle}"`);
+    } catch (e) {
+      console.error("[Brief] Failed to auto-generate Sam's angle, falling back to manual approval:", e);
+      status = 'awaiting_angle';
+    }
+  }
+
+  // Insert brief
   await supabaseInsert(env, 'research_briefs', {
     id: briefId,
     signal_id: signal.id,
@@ -704,16 +764,19 @@ Output this exact JSON structure:
     core_finding: brief.core_finding,
     supporting_data: brief.supporting_data_points || [],
     content_pillar: signal.pillar,
-    contrarian_angle: brief.conventional_wisdom_broken || signal.contrarian_angle,
+    contrarian_angle: contrarianAngle,
     target_keywords: brief.target_keywords || [],
     citation_potential: brief.citation_potential || 'medium',
-    status: 'awaiting_angle',
+    status: status,
+    sams_angle: samsAngle || null,
+    sams_angle_added_at: nowIso,
+    reviewed_at: nowIso,
   });
 
   // Mark signal as used
   await supabasePatch(env, 'trend_signals', `id=eq.${signal.id}`, { used_in_content: true });
 
-  console.log(`[Brief] Generated: "${brief.title}" (${brief.citation_potential} potential)`);
+  console.log(`[Brief] Generated: "${brief.title}" (${brief.citation_potential} potential, status: ${status})`);
   return { id: briefId, title: brief.title, core_finding: brief.core_finding, citation_potential: brief.citation_potential };
 }
 
@@ -807,20 +870,60 @@ export default {
 
     await sleep(100);
 
+    // Check manual approval setting from admin profile
+    let requireManualApproval = true;
+    try {
+      const profiles = await supabaseSelect<any>(env, "profiles?email=eq.singh.harsimar23@gmail.com&select=require_manual_approval");
+      if (profiles && profiles.length > 0 && profiles[0].require_manual_approval === false) {
+        requireManualApproval = false;
+      }
+    } catch (e) {
+      console.error('[Pipeline] Failed to fetch require_manual_approval setting, defaulting to true:', e);
+    }
+    console.log(`[Pipeline] Manual approval requirement is: ${requireManualApproval}`);
+
     // Stage 3: Generate brief
     let brief = null;
     try {
-      brief = await generateBrief(env);
+      brief = await generateBrief(env, requireManualApproval);
     } catch (e) {
       console.error('[Pipeline] Brief generation failed:', e);
     }
 
-    // Stage 4: Notify Sam
+    // Stage 4: Actions based on approval mode
     if (brief) {
-      try {
-        await notifySam(env, brief);
-      } catch (e) {
-        console.error('[Pipeline] Sam notification failed:', e);
+      if (requireManualApproval) {
+        try {
+          await notifySam(env, brief);
+        } catch (e) {
+          console.error('[Pipeline] Sam notification failed:', e);
+        }
+      } else {
+        // Trigger Content Factory immediately (trimming to defend against trailing whitespaces/newlines)
+        const factoryUrl = env.CONTENT_FACTORY_URL?.trim();
+        const adminPassword = env.ADMIN_PASSWORD?.trim();
+        if (factoryUrl && adminPassword) {
+          console.log(`[Pipeline] Triggering Content Factory for brief ${brief.id}...`);
+          try {
+            const res = await fetch(`${factoryUrl}/generate`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${adminPassword}`,
+              },
+              body: JSON.stringify({ briefId: brief.id }),
+            });
+            if (res.ok) {
+              console.log('[Pipeline] Content Factory triggered successfully:', await res.text());
+            } else {
+              console.error(`[Pipeline] Content Factory trigger failed: ${res.status} ${await res.text()}`);
+            }
+          } catch (e) {
+            console.error('[Pipeline] Content Factory request failed:', e);
+          }
+        } else {
+          console.warn('[Pipeline] CONTENT_FACTORY_URL or ADMIN_PASSWORD not configured. Skipping Content Factory trigger.');
+        }
       }
     }
 
