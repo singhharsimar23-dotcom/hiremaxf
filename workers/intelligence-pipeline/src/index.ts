@@ -13,6 +13,7 @@ interface Env {
   ADMIN_BASE_URL: string;
   CONTENT_FACTORY_URL: string;
   ADMIN_PASSWORD: string;
+  CONTENT_FACTORY?: Fetcher;
 }
 
 // ============================================================
@@ -92,37 +93,65 @@ async function supabasePatch(env: Env, table: string, filter: string, data: Reco
   if (!res.ok) throw new Error(`Supabase patch error: ${await res.text()}`);
 }
 
+async function readOrCancel(res: Response) {
+  try {
+    await res.body?.cancel();
+  } catch {}
+}
+
 // ============================================================
 // GEMINI HELPER
 // ============================================================
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',       // Primary
+  'gemini-2.0-flash',       // Fallback 1
+  'gemini-2.5-flash-lite',  // Fallback 2
+  'gemini-flash-latest',    // Fallback 3 (Gemini 1.5 Flash)
+  'gemini-flash-lite-latest' // Fallback 4 (Gemini 1.5 Flash Lite)
+];
+
 async function callGemini(env: Env, prompt: string, retries = 1): Promise<string> {
-  const model = 'gemini-flash-lite-latest';
   const apiKey = env.GEMINI_API_KEY?.trim();
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
-          }),
+  
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+            }),
+          }
+        );
+        if (res.status === 429) {
+          console.warn(`[Gemini] 429 Rate limited / Quota exceeded on ${model}. Trying next model...`);
+          break; // Break the attempt loop to try the NEXT model in the outer loop
         }
-      );
-      if (res.status === 429) {
-        console.warn(`[Gemini] 429 Rate limited on ${model}. Retrying in 5s...`);
-        await sleep(5000);
-        continue;
+        if (res.status === 404) {
+          console.warn(`[Gemini] ${model} not found, trying next...`);
+          break; // Try next model in list
+        }
+        if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`);
+        const data = await res.json() as any;
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (text) {
+          console.log(`[Gemini] Success with ${model}`);
+          return text;
+        }
+        throw new Error('Empty response');
+      } catch (e) {
+        console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
+        if (attempt === retries) {
+          // If this is the last retry on the last model, throw the error
+          if (model === GEMINI_MODELS[GEMINI_MODELS.length - 1]) throw e;
+        } else {
+          await sleep(2000);
+        }
       }
-      if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`);
-      const data = await res.json() as any;
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } catch (e) {
-      console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
-      if (attempt === retries) throw e;
-      await sleep(2000);
     }
   }
   return '';
@@ -214,7 +243,11 @@ async function fetchFRED(env: Env): Promise<void> {
     try {
       const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${env.FRED_API_KEY}&file_type=json&sort_order=desc&limit=12`;
       const res = await fetch(url);
-      if (!res.ok) { console.error(`[FRED] ${seriesId} failed: ${res.status}`); return; }
+      if (!res.ok) {
+        console.error(`[FRED] ${seriesId} failed: ${res.status}`);
+        await readOrCancel(res);
+        return;
+      }
       const data = await res.json() as any;
       for (const obs of (data.observations || []).slice(0, 12)) {
         if (obs.value === '.') continue;
@@ -251,7 +284,11 @@ async function fetchFRED(env: Env): Promise<void> {
 async function fetchEurostat(env: Env): Promise<void> {
   const url = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/une_rt_m?geo=EU27_2020&sex=T&age=Y15-74&s_adj=SA&unit=PC_ACT&sinceTimePeriod=2023-01&format=JSON';
   const res = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!res.ok) { console.error('[Eurostat] fetch failed:', res.status); return; }
+  if (!res.ok) {
+    console.error('[Eurostat] fetch failed:', res.status);
+    await readOrCancel(res);
+    return;
+  }
   const data = await res.json() as any;
   const values = data.value || {};
   const times = Object.values(data.dimension?.time?.category?.index || {}) as number[];
@@ -288,7 +325,11 @@ async function fetchEurostat(env: Env): Promise<void> {
 async function fetchILO(env: Env): Promise<void> {
   const url = 'https://rplumber.ilo.org/data/indicator/?id=UNE_TUNE_SEX_AGE_NB_A&timefrom=2020&sex=SEX_T&age=AGE_YTHADULT_YGE15&type=label&lang=en&format=json';
   const res = await fetch(url, { headers: { Accept: 'application/json' } });
-  if (!res.ok) { console.error('[ILO] fetch failed:', res.status); return; }
+  if (!res.ok) {
+    console.error('[ILO] fetch failed:', res.status);
+    await readOrCancel(res);
+    return;
+  }
   const text = await res.text();
   const cleanedText = text.replace(/^\uFEFF/, '').trim();
   const data = JSON.parse(cleanedText) as any[];
@@ -338,7 +379,10 @@ async function fetchRedditSentiment(env: Env): Promise<void> {
           const res = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=25`, {
             headers: { 'User-Agent': 'HireMaxIntelligence/1.0' },
           });
-          if (!res.ok) return { sub, posts: [] };
+          if (!res.ok) {
+            await readOrCancel(res);
+            return { sub, posts: [] };
+          }
           const data = await res.json() as any;
           return { sub, posts: (data.data?.children || []).slice(0, 15) };
         } catch {
@@ -431,15 +475,22 @@ ${titlesText}`;
 async function fetchHN(env: Env): Promise<void> {
   try {
     const submittedRes = await fetch('https://hacker-news.firebaseio.com/v0/user/whoishiring/submitted.json');
-    if (!submittedRes.ok) { console.error('[HN] Failed to fetch whoishiring submissions'); return; }
+    if (!submittedRes.ok) {
+      console.error('[HN] Failed to fetch whoishiring submissions');
+      await readOrCancel(submittedRes);
+      return;
+    }
     const itemIds = await submittedRes.json() as number[];
 
-    // Parallel fetch recent item headers to find "Who Is Hiring" thread
+    // Parallel fetch recent item headers to find "Who Is Hiring" thread (limited to top 3 to prevent subrequest exhaustion)
     const recentItems = await Promise.all(
-      itemIds.slice(0, 15).map(async (id) => {
+      itemIds.slice(0, 3).map(async (id) => {
         try {
           const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`);
-          if (!res.ok) return null;
+          if (!res.ok) {
+            await readOrCancel(res);
+            return null;
+          }
           return await res.json() as any;
         } catch {
           return null;
@@ -464,12 +515,15 @@ async function fetchHN(env: Env): Promise<void> {
     const commentIds = (thread.kids || []).slice(0, 100);
     const commentTexts: string[] = [];
 
-    // Parallel fetch comments
+    // Parallel fetch comments (limited to top 5 to prevent subrequest exhaustion)
     const comments = await Promise.all(
-      commentIds.slice(0, 10).map(async (cid: number) => {
+      commentIds.slice(0, 5).map(async (cid: number) => {
         try {
           const res = await fetch(`https://hacker-news.firebaseio.com/v0/item/${cid}.json`);
-          if (!res.ok) return null;
+          if (!res.ok) {
+            await readOrCancel(res);
+            return null;
+          }
           return await res.json() as any;
         } catch {
           return null;
@@ -1052,16 +1106,18 @@ export default {
       } else {
         const factoryUrl = env.CONTENT_FACTORY_URL?.trim();
         const adminPassword = env.ADMIN_PASSWORD?.trim();
-        if (factoryUrl && adminPassword) {
+        if ((env.CONTENT_FACTORY || factoryUrl) && adminPassword) {
           console.log(`[Pipeline] Triggering Content Factory for brief ${i + 1}: ${brief.id}...`);
           try {
-            const res = await fetch(`${factoryUrl}/generate`, {
+            const reqUrl = env.CONTENT_FACTORY ? "http://content-factory/generate" : `${factoryUrl}/generate`;
+            const caller = env.CONTENT_FACTORY || { fetch: globalThis.fetch };
+            const res = await caller.fetch(reqUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${adminPassword}`,
               },
-              body: JSON.stringify({ briefId: brief.id }),
+              body: JSON.stringify({ briefId: brief.id, sync: true }),
             });
             if (res.ok) {
               console.log(`[Pipeline] Content Factory triggered for brief ${i + 1}.`);
@@ -1086,6 +1142,27 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (url.pathname === '/trigger' && request.method === 'POST') {
+      let isSync = false;
+      try {
+        const body = await request.json() as any;
+        if (body && body.sync) isSync = true;
+      } catch {}
+
+      if (isSync) {
+        console.log('[Pipeline] Synchronous execution requested');
+        try {
+          await this.scheduled({ scheduledTime: Date.now() } as any, env, ctx);
+          return new Response(JSON.stringify({ ok: true, message: 'Pipeline executed synchronously' }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ error: e.message || 'Pipeline failed' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
       ctx.waitUntil(this.scheduled({ scheduledTime: Date.now() } as any, env, ctx));
       return new Response(JSON.stringify({ ok: true, message: 'Pipeline triggered' }), {
         headers: { 'Content-Type': 'application/json' },

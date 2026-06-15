@@ -54,37 +54,59 @@ async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 // ============================================================
 // GEMINI
 // ============================================================
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',        // Primary — best reasoning, current stable
+  'gemini-2.0-flash',        // Fallback 1 — stable, fast
+  'gemini-2.5-flash-lite',   // Fallback 2
+  'gemini-flash-latest',     // Fallback 3 (Gemini 1.5 Flash)
+  'gemini-flash-lite-latest' // Fallback 4 (Gemini 1.5 Flash Lite)
+];
+
 async function callGemini(env: Env, prompt: string): Promise<string> {
-  const model = 'gemini-2.0-flash-exp';
   const apiKey = env.GEMINI_API_KEY?.trim();
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
-          }),
+  
+  for (const model of GEMINI_MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 16384,  // Raised to prevent article truncation
+              },
+            }),
+          }
+        );
+        if (res.status === 429) {
+          console.warn(`[Gemini] 429 Rate limited / Quota exceeded on ${model}. Trying next model...`);
+          break; // Break the attempt loop to try the NEXT model in the outer loop
         }
-      );
-      if (res.status === 429) {
-        console.warn(`[Gemini] 429 Rate limited on ${model}. Retrying in 5s...`);
-        await sleep(5000);
-        continue;
+        if (res.status === 404) {
+          console.warn(`[Gemini] ${model} not found, trying next model...`);
+          break; // Try next model
+        }
+        if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+        const data = await res.json() as any;
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (text) {
+          console.log(`[Gemini] Success with ${model}`);
+          return text;
+        }
+        throw new Error('Empty response from Gemini');
+      } catch (e) {
+        console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
+        if (attempt === 0) {
+          await sleep(2000);
+        }
       }
-      if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
-      const data = await res.json() as any;
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } catch (e) {
-      console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
-      if (attempt === 1) throw e;
-      await sleep(2000);
     }
   }
-  throw new Error('Gemini exhausted retries');
+  throw new Error('All Gemini models exhausted');
 }
 
 // ============================================================
@@ -305,6 +327,165 @@ function extractFAQPairs(markdown: string): Array<{ question: string; answer: st
 }
 
 // ============================================================
+// EXTRACT AND INSERT PREDICTION FOR PIPELINE POSTS
+// ============================================================
+async function extractAndInsertPrediction(env: Env, content: string, pieceId: string): Promise<void> {
+  console.log(`[Factory] Extracting falsifiable prediction from blog post for piece ${pieceId}`);
+  try {
+    const prompt = `You are a data extraction assistant. Read this research article and extract the single falsifiable labor market prediction described in the "What Comes Next" section.
+    
+    Article content:
+    ${content}
+    
+    Return ONLY a valid JSON object matching this structure (no markdown fences, no wrappers, just raw JSON):
+    {
+      "prediction_text": "A clear, specific, falsifiable prediction statement",
+      "prediction_direction": "up|down|flat|growth|contraction|stable",
+      "prediction_magnitude_range": "e.g., -10% to -15% or +5% to +8% or decline by 100bps",
+      "prediction_metric": "A snake_case metric identifier (e.g., remote_tech_hiring)",
+      "prediction_source": "The tracking source (e.g., FRED, Indeed, BLS, Eurostat, HN)",
+      "prediction_timeframe": "ISO timestamp for target timeframe (e.g., 2026-12-31T00:00:00Z)",
+      "confidence_score": 7,
+      "invalidation_conditions": ["Condition 1", "Condition 2"]
+    }`;
+
+    const resText = await callGemini(env, prompt);
+    const jsonMatch = resText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn(`[Factory] Failed to find prediction JSON in response: ${resText}`);
+      return;
+    }
+    const parsed = JSON.parse(jsonMatch[0].trim());
+    
+    await supabaseQuery(env, 'predictions', {
+      method: 'POST',
+      body: JSON.stringify({
+        prediction_text: parsed.prediction_text,
+        prediction_direction: parsed.prediction_direction,
+        prediction_magnitude_range: parsed.prediction_magnitude_range,
+        prediction_metric: parsed.prediction_metric,
+        prediction_source: parsed.prediction_source,
+        prediction_timeframe: parsed.prediction_timeframe,
+        confidence_score: parsed.confidence_score || 7,
+        invalidation_conditions: parsed.invalidation_conditions || [],
+        content_piece_id: pieceId,
+      }),
+      headers: { Prefer: 'return=minimal' },
+    });
+    console.log(`[Factory] Successfully inserted prediction for piece ${pieceId}`);
+  } catch (err) {
+    console.error('[Factory] Failed to extract or insert prediction:', err);
+  }
+}
+
+// ============================================================
+// BREAKING NEWS ANALYZER & PUBLISHER
+// ============================================================
+async function generateBreakingNews(env: Env, event: string, details: string, origin: string): Promise<string> {
+  const prompt = `You are the chief labor analyst at HireMax. Convert this global breaking news event into a structured research brief for the labor market.
+  
+Event Headline: ${event}
+Event Details: ${details}
+
+Create a structured research brief that connects this event to the labor market under the "macro" (Macro Trends) pillar.
+Return ONLY a valid JSON object matching this structure (no markdown fences, no wrappers, just raw JSON):
+{
+  "title": "A highly punchy, click-inducing, analytical headline (max 90 chars) connecting the news to employment trends",
+  "core_finding": "A 100-150 word summary of how this geopolitical/macro realignment reshapes hiring, labor budgets, remote migration, or skill demands.",
+  "supporting_data": [
+    { "stat": "A specific number or percentage (can be a projection, real-time index delta, or defense re-budget percentage)", "source": "A credible data source e.g. FRED, Eurostat, IMF, or Defense Budget Analysis", "context": "How this specific number justifies the labor shift" }
+  ],
+  "content_pillar": "macro",
+  "contrarian_angle": "The conventional belief that this event means X, but the raw labor reality is actually Y.",
+  "target_keywords": ["3-5 relevant SEO search queries"],
+  "citation_potential": "high",
+  "sams_angle": "A 2-sentence perspective written as Sam (Founder), in PG's blunt first-person voice, telling job seekers how to bypass the standard response to this event.",
+  "prediction": {
+    "prediction_text": "One specific, falsifiable labor-market prediction resulting from this event with timeframe and invalidation conditions.",
+    "prediction_direction": "growth / contraction / stable",
+    "prediction_magnitude_range": "e.g., -10% to -15% or +5% to +8%",
+    "prediction_metric": "A snake_case metric identifier representing the signal (e.g., defense_engineering_job_postings, remote_tech_hiring)",
+    "prediction_source": "The tracking source e.g., FRED or Indeed Economic Research",
+    "prediction_timeframe": "ISO timestamp (e.g., 2026-12-31T00:00:00Z)",
+    "confidence_score": 8,
+    "invalidation_conditions": ["Condition 1", "Condition 2"]
+  }
+}`;
+
+  console.log(`[BreakingNews] Requesting structured brief from Gemini...`);
+  const responseText = await callGemini(env, prompt);
+  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error(`Failed to parse structured brief JSON from model output: ${responseText}`);
+  }
+  const parsed = JSON.parse(jsonMatch[0].trim());
+
+  // Insert research brief into Supabase
+  const briefInsert = await supabaseQuery(env, 'research_briefs', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: parsed.title,
+      core_finding: parsed.core_finding,
+      supporting_data: parsed.supporting_data,
+      content_pillar: parsed.content_pillar,
+      contrarian_angle: parsed.contrarian_angle,
+      target_keywords: parsed.target_keywords,
+      citation_potential: parsed.citation_potential,
+      sams_angle: parsed.sams_angle,
+      status: 'approved',
+      generated_at: new Date().toISOString(),
+      reviewed_at: new Date().toISOString(),
+    }),
+  });
+
+  const createdBrief = (briefInsert as any)?.[0];
+  if (!createdBrief || !createdBrief.id) {
+    throw new Error('Supabase failed to insert and return the research brief.');
+  }
+
+  const briefId = createdBrief.id;
+  console.log(`[BreakingNews] Brief ${briefId} created successfully. Starting content generation...`);
+
+  // Generate all content synchronously to avoid Cloudflare 30s background timeout
+  await generateAllContent(env, briefId, origin);
+
+  // Retrieve the generated content piece to link the prediction
+  const pieces = await supabaseQuery(env, `content_pieces?brief_id=eq.${briefId}&content_type=eq.blog_post&limit=1`);
+  const blogPiece = (pieces as any)?.[0];
+  if (blogPiece && blogPiece.id && parsed.prediction) {
+    console.log(`[BreakingNews] Inserting falsifiable prediction linked to piece ${blogPiece.id}`);
+    await supabaseQuery(env, 'predictions', {
+      method: 'POST',
+      body: JSON.stringify({
+        prediction_text: parsed.prediction.prediction_text,
+        prediction_direction: parsed.prediction.prediction_direction,
+        prediction_magnitude_range: parsed.prediction.prediction_magnitude_range,
+        prediction_metric: parsed.prediction.prediction_metric,
+        prediction_source: parsed.prediction.prediction_source,
+        prediction_timeframe: parsed.prediction.prediction_timeframe,
+        confidence_score: parsed.prediction.confidence_score,
+        invalidation_conditions: parsed.prediction.invalidation_conditions,
+        content_piece_id: blogPiece.id,
+      }),
+      headers: { Prefer: 'return=minimal' },
+    });
+  }
+
+  // Trigger distributor to publish it live immediately
+  const distributorUrl = env.DISTRIBUTOR_URL || 'https://hiremax-intelligence-distributor.singh-harsimar23.workers.dev';
+  try {
+    const pubRes = await fetch(`${distributorUrl}/trigger-distribute`, {
+      method: 'POST',
+    });
+    console.log(`[BreakingNews] Distribute trigger status: ${pubRes.status}`);
+  } catch (pubErr) {
+    console.error(`[BreakingNews] Failed to trigger distributor:`, pubErr);
+  }
+
+  return briefId;
+}
+
+// ============================================================
 // MAIN GENERATION FLOW
 // ============================================================
 async function generateAllContent(env: Env, briefId: string, origin: string): Promise<void> {
@@ -396,11 +577,11 @@ async function generateAllContent(env: Env, briefId: string, origin: string): Pr
         : 'blog',
     };
 
-    await supabaseQuery(env, 'content_pieces', {
+    const insertedPiece = await supabaseQuery(env, 'content_pieces', {
       method: 'POST',
       body: JSON.stringify(pieceData),
-      headers: { Prefer: 'return=minimal' },
-    });
+    }) as any[];
+    const pieceId = insertedPiece?.[0]?.id;
 
     // For blog posts, also insert into blog_posts table
     if (contentType === 'blog_post' && slug) {
@@ -420,6 +601,10 @@ async function generateAllContent(env: Env, briefId: string, origin: string): Pr
         }),
         headers: { Prefer: 'return=minimal' },
       });
+
+      if (pieceId) {
+        await extractAndInsertPrediction(env, content, pieceId);
+      }
     }
 
     console.log(`[Factory] ✅ ${contentType} created successfully.`);
@@ -1163,8 +1348,8 @@ export default {
 
     const url = new URL(request.url);
 
-    if (url.pathname !== '/generate' || request.method !== 'POST') {
-      return new Response('HireMax Content Factory — POST /generate', { status: 200 });
+    if ((url.pathname !== '/generate' && url.pathname !== '/breaking-news') || request.method !== 'POST') {
+      return new Response('HireMax Content Factory — POST /generate | POST /breaking-news', { status: 200 });
     }
 
     // Auth check
@@ -1175,6 +1360,26 @@ export default {
 
     const body = await request.json() as any;
     const origin = new URL(request.url).origin;
+
+    if (url.pathname === '/breaking-news') {
+      const event = body.event || body.headline;
+      const details = body.details || body.description || '';
+      if (!event) return new Response(JSON.stringify({ error: 'event (headline) is required for breaking news' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      
+      try {
+        console.log(`[Factory] Breaking news triggered: "${event}"`);
+        const briefId = await generateBreakingNews(env, event, details, origin);
+        return new Response(JSON.stringify({ ok: true, briefId, message: 'Breaking news article generated and published successfully' }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'https://www.hiremax.site' },
+        });
+      } catch (err: any) {
+        console.error('[Factory] Breaking news execution failed:', err);
+        return new Response(JSON.stringify({ error: err.message || 'Failed to process breaking news event' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     if (body.type) {
       if (body.type === 'standard_intelligence') {
@@ -1265,6 +1470,24 @@ export default {
 
     if (!body.briefId) {
       return new Response(JSON.stringify({ error: 'briefId or type required' }), { status: 400 });
+    }
+
+    if (body.sync) {
+      console.log(`[Factory] Synchronous generation requested for brief ${body.briefId}`);
+      try {
+        await generateAllContent(env, body.briefId, origin);
+        return new Response(JSON.stringify({ ok: true, briefId: body.briefId, message: 'Generation completed synchronously' }), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': 'https://www.hiremax.site',
+          },
+        });
+      } catch (e: any) {
+        return new Response(JSON.stringify({ error: e.message || 'Generation failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Run generation in background using native ExecutionContext

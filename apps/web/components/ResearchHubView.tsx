@@ -269,9 +269,10 @@ const SidebarLatest: React.FC<{ posts: BlogPost[]; onViewPost: (slug: string) =>
 
 /* ── Stats Bar ── */
 const StatsBar: React.FC<{ posts: BlogPost[]; predictions: any[] }> = ({ posts, predictions }) => {
-  const pending = predictions.filter(p => p.prediction_correct === null).length;
+  const resolved = predictions.filter(p => p.prediction_correct !== null);
   const correct = predictions.filter(p => p.prediction_correct === true).length;
-  const accuracy = predictions.length > 0 ? Math.round((correct / predictions.filter(p => p.prediction_correct !== null).length) * 100) || 0 : 0;
+  const pending = predictions.filter(p => p.prediction_correct === null).length;
+  const accuracy = resolved.length > 0 ? Math.round((correct / resolved.length) * 100) : null;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -279,7 +280,7 @@ const StatsBar: React.FC<{ posts: BlogPost[]; predictions: any[] }> = ({ posts, 
         { label: 'Published Analyses', value: String(posts.length), icon: <BookOpen size={13} className="text-blue-400" />, color: 'text-blue-400' },
         { label: 'Research Pillars', value: String(new Set(posts.map(p => p.pillar)).size), icon: <Layers size={13} className="text-purple-400" />, color: 'text-purple-400' },
         { label: 'Live Predictions', value: String(pending), icon: <Target size={13} className="text-amber-400" />, color: 'text-amber-400' },
-        { label: 'Forecast Accuracy', value: predictions.filter(p => p.prediction_correct !== null).length > 0 ? `${accuracy}%` : '—', icon: <CheckCircle size={13} className="text-emerald-400" />, color: 'text-emerald-400' },
+        { label: 'Forecast Accuracy', value: accuracy !== null ? `${accuracy}%` : '—', icon: <CheckCircle size={13} className="text-emerald-400" />, color: 'text-emerald-400' },
       ].map(stat => (
         <div key={stat.label} className="bg-[#0D0D16] border border-white/[0.07] rounded-xl p-4 flex items-center gap-3">
           <div className="p-2 bg-white/[0.04] rounded-lg shrink-0">{stat.icon}</div>
@@ -359,11 +360,14 @@ const NewsletterSignup: React.FC = () => {
       const res = await fetch(`${distributorUrl}/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed, honeypot: '' }),
+        body: JSON.stringify({ email: trimmed }),
       });
       if (res.ok) { setStatus('success'); return; }
-      const { error } = await supabase.from('newsletter_subscribers').insert({ email: trimmed, source: 'research_hub', subscribed_at: new Date().toISOString() });
-      if (error && !error.message.includes('duplicate')) throw error;
+      // Fallback: direct Supabase insert
+      const { error } = await supabase
+        .from('newsletter_subscribers')
+        .upsert({ email: trimmed, subscribed_at: new Date().toISOString() }, { onConflict: 'email', ignoreDuplicates: true });
+      if (error && !error.message?.toLowerCase().includes('duplicate')) throw error;
       setStatus('success');
     } catch {
       setStatus('error');
@@ -438,11 +442,23 @@ export const ResearchHubView: React.FC<ResearchHubViewProps> = ({ onViewPost }) 
     (async () => {
       setLoading(true);
       const [postsRes, predsRes] = await Promise.all([
-        supabase.from('blog_posts').select('id, slug, title, content_markdown, seo_meta, pillar, published_at, faq_pairs').eq('status', 'published').order('published_at', { ascending: false }).limit(50),
-        supabase.from('predictions').select('*').order('created_at', { ascending: false }).limit(6),
+        supabase
+          .from('blog_posts')
+          .select('id, slug, title, content_markdown, seo_meta, pillar, published_at, faq_pairs')
+          .eq('status', 'published')
+          .order('published_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('predictions')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(6)
+          .then(r => r) // swallow missing-table error gracefully
+          .catch(() => ({ data: [], error: null })),
       ]);
       if (!postsRes.error && postsRes.data) setPosts(postsRes.data as BlogPost[]);
-      if (!predsRes.error && predsRes.data) setPredictions(predsRes.data);
+      const predsData = (predsRes as any)?.data;
+      if (Array.isArray(predsData)) setPredictions(predsData);
       setLoading(false);
     })();
   }, []);

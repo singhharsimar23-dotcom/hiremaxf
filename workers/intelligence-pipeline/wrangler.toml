@@ -9,6 +9,10 @@ SAM_EMAIL = "harsimar@hiremax.site"
 [triggers]
 crons = ["0 * * * *"]
 
+[[services]]
+binding = "CONTENT_FACTORY"
+service = "hiremax-intelligence-content-factory"
+
 # Secrets — set via: wrangler secret put SECRET_NAME
 # SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 # GEMINI_API_KEY
