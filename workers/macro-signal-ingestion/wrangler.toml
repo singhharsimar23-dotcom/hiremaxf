@@ -1,0 +1,18 @@
+name = "hiremax-macro-signal-ingestion"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ENVIRONMENT = "production"
+# DOMAIN_SIGNAL_PROCESSOR_URL = "https://hiremax-domain-signal-processor.singh-harsimar23.workers.dev"
+
+[[services]]
+binding = "DOMAIN_SIGNAL_PROCESSOR"
+service = "hiremax-domain-signal-processor"
+
+[[kv_namespaces]]
+binding = "INTELLIGENCE_KV"
+id = "636ba95ce2d5456f855bcc45b2b92a48"
+
+# [triggers]
+# crons = ["30 * * * *"]

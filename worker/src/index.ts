@@ -495,6 +495,47 @@ async function handleScheduled(event: ScheduledEvent, env: Env, ctx: ExecutionCo
   const m = scheduledDate.getUTCMinutes();
   const h = scheduledDate.getUTCHours();
 
+  // ─── Centralized Command: Intelligence Network crons ───
+  if (m === 30) {
+    console.log('[scheduled] Triggering Centralized Command: macro-signal-ingestion');
+    ctx.waitUntil(
+      fetch('https://hiremax-macro-signal-ingestion.singh-harsimar23.workers.dev')
+        .then(res => res.text())
+        .then(text => console.log('[scheduled] Macro ingestion response:', text.slice(0, 200)))
+        .catch(err => console.error('[scheduled] Macro ingestion trigger failed:', err))
+    );
+  }
+
+  if (m === 0 && h % 12 === 2) {
+    console.log('[scheduled] Triggering Centralized Command: tech-signal-ingestion');
+    ctx.waitUntil(
+      fetch('https://hiremax-tech-signal-ingestion.singh-harsimar23.workers.dev')
+        .then(res => res.text())
+        .then(text => console.log('[scheduled] Tech ingestion response:', text.slice(0, 200)))
+        .catch(err => console.error('[scheduled] Tech ingestion trigger failed:', err))
+    );
+  }
+
+  if (m === 0 && h % 6 === 0) {
+    console.log('[scheduled] Triggering Centralized Command: convergence-detector');
+    ctx.waitUntil(
+      fetch('https://hiremax-convergence-detector.singh-harsimar23.workers.dev')
+        .then(res => res.text())
+        .then(text => console.log('[scheduled] Convergence detector response:', text.slice(0, 200)))
+        .catch(err => console.error('[scheduled] Convergence detector trigger failed:', err))
+    );
+  }
+
+  if (m === 0 && h % 12 === 6) {
+    console.log('[scheduled] Triggering Centralized Command: prediction-outcome-checker');
+    ctx.waitUntil(
+      fetch('https://hiremax-prediction-outcome-checker.singh-harsimar23.workers.dev')
+        .then(res => res.text())
+        .then(text => console.log('[scheduled] Prediction outcome checker response:', text.slice(0, 200)))
+        .catch(err => console.error('[scheduled] Prediction outcome checker trigger failed:', err))
+    );
+  }
+
   if (m === 40) console.log('[scheduled] Running Enrichment stub');
   if (m === 0 && h % 2 === 0) console.log('[scheduled] Running Embedding stub');
 

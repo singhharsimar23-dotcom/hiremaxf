@@ -24,7 +24,8 @@ import {
   Eye,
   Briefcase,
   MessageSquare,
-  FileSearch
+  FileSearch,
+  BookOpen
 } from 'lucide-react';
 import { AppView, UserPlan } from '../types';
 import { isAdminUser } from '../lib/admin';
@@ -49,6 +50,7 @@ const PREFETCH_MAP: Record<string, () => void> = {
   'ai-review':           () => import('./AIReviewView'),
   'linkedin-optimizer':  () => import('./LinkedInOptimizerView'),
   'full-review':         () => import('./FullReviewView'),
+  'research':            () => import('./ResearchHubView'),
 };
 
 const NavLink: React.FC<{
@@ -219,6 +221,14 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
           />
 
           <NavLink
+            label="Research Hub"
+            active={currentView === 'research'}
+            onClick={() => setView('research')}
+            icon={<BookOpen size={18} className="opacity-70 text-slate-400" />}
+            targetView="research"
+          />
+
+          <NavLink
             label="LinkedIn"
             active={currentView === 'linkedin-optimizer'}
             onClick={() => setView('linkedin-optimizer')}
@@ -246,16 +256,25 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
           New Resume
         </button>
 
-        <button
-          onClick={() => setDropdownOpen(!dropdownOpen)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-[#2D313D] transition-all hover:bg-white/5 ${dropdownOpen ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white'}`}
-        >
-          <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-500">
-            <User size={18} />
-          </div>
-          <ChevronDown size={14} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-        </button>
-        {dropdownOpen && (
+        {user ? (
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-[#2D313D] transition-all hover:bg-white/5 ${dropdownOpen ? 'text-white bg-white/10' : 'text-slate-400 hover:text-white'}`}
+          >
+            <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-500">
+              <User size={18} />
+            </div>
+            <ChevronDown size={14} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+        ) : (
+          <button
+            onClick={() => setView('auth')}
+            className="flex items-center gap-2 bg-[#1A1D26] hover:bg-[#252833] text-white px-4 py-2 rounded-xl font-bold text-sm border border-[#2D313D] transition-all"
+          >
+            Sign In
+          </button>
+        )}
+        {dropdownOpen && user && (
           <div className="absolute top-full right-0 mt-3 w-64 bg-[#1A1D26] border border-[#2D313D] rounded-2xl shadow-2xl py-3 z-[110] animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="px-5 py-3 border-b border-[#2D313D] mb-2">
               <p className="text-white font-bold text-sm truncate">User Account</p>
@@ -358,6 +377,7 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
               <NavLink label="Interview Prep" active={currentView === 'interview-prep'} onClick={() => { setView('interview-prep'); setMobileMenuOpen(false); }} icon={<MessageSquare size={18} className={isElite ? 'text-violet-400' : 'text-violet-400/90 animate-pulse'} />} isLocked={!isElite} targetView="interview-prep" isFlagship />
               <NavLink label="Cover Letter" active={currentView === 'cover-letter'} onClick={() => { setView('cover-letter'); setMobileMenuOpen(false); }} icon={<FileSearch size={18} />} isLocked={!isPro} targetView="cover-letter" />
               <NavLink label="Tracker" active={currentView === 'tracker'} onClick={() => { setView('tracker'); setMobileMenuOpen(false); }} icon={<Briefcase size={18} />} targetView="tracker" />
+              <NavLink label="Research Hub" active={currentView === 'research'} onClick={() => { setView('research'); setMobileMenuOpen(false); }} icon={<BookOpen size={18} />} targetView="research" />
               <NavLink label="LinkedIn" active={currentView === 'linkedin-optimizer'} onClick={() => { setView('linkedin-optimizer'); setMobileMenuOpen(false); }} icon={<Activity size={18} />} isLocked={!isPro} targetView="linkedin-optimizer" />
             </div>
 
@@ -369,13 +389,22 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
                 <Plus size={18} />
                 New Resume
               </button>
-              <button
-                onClick={handleSignOut}
-                className="w-full flex items-center justify-center gap-2 text-red-500 bg-red-500/5 hover:bg-red-500/10 px-5 py-4 rounded-xl font-bold text-sm transition-all"
-              >
-                <LogOut size={18} />
-                Sign Out
-              </button>
+              {user ? (
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center justify-center gap-2 text-red-500 bg-red-500/5 hover:bg-red-500/10 px-5 py-4 rounded-xl font-bold text-sm transition-all"
+                >
+                  <LogOut size={18} />
+                  Sign Out
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setView('auth'); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center justify-center gap-2 text-white bg-blue-600 hover:bg-blue-50 px-5 py-4 rounded-xl font-bold text-sm transition-all"
+                >
+                  Sign In
+                </button>
+              )}
             </div>
           </div>
         </div>

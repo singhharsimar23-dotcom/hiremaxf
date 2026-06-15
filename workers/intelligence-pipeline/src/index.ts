@@ -95,8 +95,8 @@ async function supabasePatch(env: Env, table: string, filter: string, data: Reco
 // ============================================================
 // GEMINI HELPER
 // ============================================================
-async function callGemini(env: Env, prompt: string, retries = 2, forceFlash15 = false): Promise<string> {
-  const model = forceFlash15 ? 'gemini-2.5-flash' : 'gemini-2.0-flash';
+async function callGemini(env: Env, prompt: string, retries = 1): Promise<string> {
+  const model = 'gemini-flash-lite-latest';
   const apiKey = env.GEMINI_API_KEY?.trim();
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -112,12 +112,8 @@ async function callGemini(env: Env, prompt: string, retries = 2, forceFlash15 = 
         }
       );
       if (res.status === 429) {
-        if (!forceFlash15) {
-          console.warn(`[Gemini] 429 Rate limited on ${model}. Falling back to gemini-2.5-flash...`);
-          return callGemini(env, prompt, retries, true);
-        }
-        console.warn(`[Gemini] Attempt ${attempt}: 429 Rate limited on ${model}. Retrying in 2s...`);
-        await sleep(2000);
+        console.warn(`[Gemini] 429 Rate limited on ${model}. Retrying in 5s...`);
+        await sleep(5000);
         continue;
       }
       if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`);
@@ -125,19 +121,15 @@ async function callGemini(env: Env, prompt: string, retries = 2, forceFlash15 = 
       return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     } catch (e) {
       console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
-      if (!forceFlash15 && attempt === retries) {
-        console.warn(`[Gemini] Failed with ${model}. Falling back to gemini-2.5-flash...`);
-        return callGemini(env, prompt, retries, true);
-      }
       if (attempt === retries) throw e;
-      await sleep(1000);
+      await sleep(2000);
     }
   }
   return '';
 }
 
 async function generateSamsAngle(env: Env, briefTitle: string, coreFinding: string, contrarianAngle: string): Promise<string> {
-  const prompt = `You are Sam, the founder of HireMax. Write a 1-3 sentence personal perspective/angle on this labor market finding.
+  const prompt = `You are Harsimar 'sam' Singh, the founder of HireMax. Write a 1-3 sentence personal perspective/angle on this labor market finding.
 Style: Extremely direct, contrarian, zero corporate fluff, sounding like Paul Graham. 
 Speak in the first person ("I think...", "We're seeing..."). Highlight what this means for job seekers right now.
 
@@ -559,6 +551,106 @@ ${commentTexts.join('\n\n').slice(0, 3000)}`;
   }
 }
 
+// RSS: Ingest Tech/Economic News and extract narratives
+async function fetchNewsNarratives(env: Env): Promise<void> {
+  console.log('[News] Fetching news narratives...');
+  try {
+    const tcRes = await fetch('https://techcrunch.com/feed/');
+    const tcText = tcRes.ok ? await tcRes.text() : '';
+
+    const hnRes = await fetch('https://hnrss.github.io/frontpage');
+    const hnText = hnRes.ok ? await hnRes.text() : '';
+
+    const titles: string[] = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+
+    // TechCrunch RSS parsing
+    let count = 0;
+    while ((match = itemRegex.exec(tcText)) !== null && count < 10) {
+      const titleMatch = match[1].match(/<title>(.*?)<\/title>/);
+      const descMatch = match[1].match(/<description>([\s\S]*?)<\/description>/);
+      if (titleMatch) {
+        const titleStr = titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim();
+        const descStr = descMatch ? descMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').slice(0, 150).trim() : '';
+        titles.push(`[TechCrunch] ${titleStr}: ${descStr}`);
+        count++;
+      }
+    }
+
+    // Hacker News RSS parsing
+    count = 0;
+    const hnItemRegex = /<item>([\s\S]*?)<\/item>/g;
+    while ((match = hnItemRegex.exec(hnText)) !== null && count < 10) {
+      const titleMatch = match[1].match(/<title>(.*?)<\/title>/);
+      if (titleMatch) {
+        const titleStr = titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').trim();
+        titles.push(`[Hacker News] ${titleStr}`);
+        count++;
+      }
+    }
+
+    if (titles.length === 0) {
+      console.log('[News] No articles fetched');
+      return;
+    }
+
+    const prompt = `You are a labor market analyst. Review these trending tech/business titles:
+${titles.join('\n')}
+
+Identify the top 1-2 major narratives happening right now related to hiring, layoffs, AI engineering shifts, remote work conflicts, or salary pressure.
+For each narrative:
+1. Provide a short punchy headline
+2. Write a 1-sentence description of the narrative
+3. Match it to one of our content pillars: entry_level_collapse, remote_work_divide, ai_hiring_impact, compensation_reality, skills_velocity
+4. Provide a significance score from 0.70 to 0.90 based on how important it is for tech professionals and job seekers.
+
+You must return exactly a JSON array of objects, with no explanation and no markdown wrappers:
+[
+  {
+    "title": "Short title",
+    "description": "1-sentence summary",
+    "pillar": "entry_level_collapse|remote_work_divide|ai_hiring_impact|compensation_reality|skills_velocity",
+    "significance_score": 0.85
+  }
+]`;
+
+    const result = await callGemini(env, prompt);
+    const jsonMatch = result.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error('[News] No JSON array found in Gemini response:', result);
+      return;
+    }
+    const narratives = JSON.parse(jsonMatch[0].trim());
+    console.log(`[News] Extracted ${narratives.length} narratives`);
+
+    const today = new Date().toISOString().split('T')[0];
+    const points = narratives.map((n: any) => ({
+      source_name: 'rss_news',
+      data_type: 'narrative',
+      geography: 'Global',
+      sector: 'Tech',
+      metric_name: 'trending_narrative',
+      metric_value: n.significance_score,
+      metric_unit: 'confidence',
+      period_date: today,
+      period_label: today,
+      raw_payload: { title: n.title, description: n.description, pillar: n.pillar, significance_score: n.significance_score },
+    }));
+
+    if (points.length > 0) {
+      await supabaseInsert(env, 'raw_data_points', points);
+    }
+
+    await supabasePatch(env, 'data_sources', 'source_name=eq.rss_news', {
+      last_fetched_at: new Date().toISOString(),
+    });
+    console.log('[News] Narrative news successfully processed and stored');
+  } catch (err) {
+    console.error('[News] News narratives processing failed:', err);
+  }
+}
+
 // ============================================================
 // STAGE 2: ANOMALY DETECTION
 // ============================================================
@@ -568,6 +660,7 @@ interface RawDataPoint {
   period_date: string;
   source_name: string;
   geography: string;
+  raw_payload?: any;
 }
 
 function calcStats(values: number[]): { mean: number; stddev: number } {
@@ -605,7 +698,7 @@ async function detectAnomalies(env: Env): Promise<void> {
   // Get all distinct metrics with enough history
   const allData = await supabaseSelect<RawDataPoint>(
     env,
-    'raw_data_points?select=metric_name,metric_value,period_date,source_name,geography&order=period_date.desc&limit=5000'
+    'raw_data_points?select=metric_name,metric_value,period_date,source_name,geography,raw_payload&order=period_date.desc&limit=5000'
   );
 
   // Group by metric_name
@@ -630,6 +723,7 @@ async function detectAnomalies(env: Env): Promise<void> {
   const signals: Array<{ pillar: string; headline: string; significanceScore: number; supportingData: unknown[]; contrarianAngle: string }> = [];
 
   for (const [metricName, dataPoints] of Object.entries(byMetric)) {
+    if (metricName === 'trending_narrative') continue;
     if (dataPoints.length < 4) continue; // Need min 4 data points
 
     const sorted = [...dataPoints].sort((a, b) => b.period_date.localeCompare(a.period_date));
@@ -663,6 +757,25 @@ async function detectAnomalies(env: Env): Promise<void> {
     });
   }
 
+  // Process news narrative signals from the last 24 hours
+  const todayStr = new Date().toISOString().split('T')[0];
+  const narrativePoints = allData.filter(d => d.metric_name === 'trending_narrative' && d.period_date === todayStr);
+  
+  for (const np of narrativePoints) {
+    const payload = np.raw_payload;
+    if (payload && payload.title) {
+      signals.push({
+        pillar: payload.pillar || 'entry_level_collapse',
+        headline: `[Trending News] ${payload.title}`,
+        significanceScore: payload.significance_score || 0.75,
+        supportingData: [
+          { stat: 'Narrative Shift', source: 'RSS_NEWS', context: payload.description || '' }
+        ],
+        contrarianAngle: CONTENT_PILLARS[payload.pillar || 'entry_level_collapse']?.contrarian_frame || 'The news shifts conventional market assumptions',
+      });
+    }
+  }
+
   // Cross-signal amplification: BLS down + Reddit entry-level negative
   const blsDown = signals.find(s => s.pillar === 'entry_level_collapse' && s.headline.includes('decline'));
   const redditNeg = allData.find(d => d.metric_name.includes('entry_level') && d.source_name === 'reddit_sentiment' && d.metric_value < -1);
@@ -690,16 +803,17 @@ async function detectAnomalies(env: Env): Promise<void> {
 // ============================================================
 // STAGE 3: BRIEF GENERATOR
 // ============================================================
-async function generateBrief(env: Env, requireManualApproval: boolean): Promise<{ id: string; title: string; core_finding: string; citation_potential: string } | null> {
-  const signals = await supabaseSelect<any>(
-    env,
-    'trend_signals?significance_score=gte.0.6&used_in_content=eq.false&order=significance_score.desc&limit=1'
-  );
-  if (signals.length === 0) {
-    console.log('[Brief] No unused signals found');
+async function generateBrief(env: Env, requireManualApproval: boolean, usedPillars: Set<string> = new Set()): Promise<{ id: string; title: string; core_finding: string; citation_potential: string; pillar: string } | null> {
+  // Build filter — skip pillars already used in this pipeline run
+  let signalQuery = 'trend_signals?significance_score=gte.0.6&used_in_content=eq.false&order=significance_score.desc&limit=10';
+  const signals = await supabaseSelect<any>(env, signalQuery);
+
+  // Pick the first signal whose pillar hasn't been used yet in this run
+  const signal = signals.find((s: any) => !usedPillars.has(s.pillar));
+  if (!signal) {
+    console.log('[Brief] No unused signals found (all available pillars already covered this run)');
     return null;
   }
-  const signal = signals[0];
   const pillarInfo = CONTENT_PILLARS[signal.pillar] || { name: signal.pillar, contrarian_frame: '' };
 
   const briefPrompt = `You are a labor market research analyst. Generate a research brief as JSON only.
@@ -777,7 +891,7 @@ Output this exact JSON structure:
   await supabasePatch(env, 'trend_signals', `id=eq.${signal.id}`, { used_in_content: true });
 
   console.log(`[Brief] Generated: "${brief.title}" (${brief.citation_potential} potential, status: ${status})`);
-  return { id: briefId, title: brief.title, core_finding: brief.core_finding, citation_potential: brief.citation_potential };
+  return { id: briefId, title: brief.title, core_finding: brief.core_finding, citation_potential: brief.citation_potential, pillar: signal.pillar };
 }
 
 // ============================================================
@@ -844,6 +958,28 @@ export default {
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     console.log('[Pipeline] Starting HireMax Intelligence Pipeline...');
 
+    // Trigger macro-signal-ingestion and tech-signal-ingestion in the background
+    ctx.waitUntil((async () => {
+      try {
+        console.log('[Pipeline] Triggering macro-signal-ingestion...');
+        const res = await fetch('https://hiremax-macro-signal-ingestion.singh-harsimar23.workers.dev');
+        console.log(`[Pipeline] Macro trigger response status: ${res.status}`);
+      } catch (err) {
+        console.error('[Pipeline] Macro ingestion trigger failed:', err);
+      }
+      
+      const hour = new Date().getUTCHours();
+      if (hour === 2) {
+        try {
+          console.log('[Pipeline] Triggering tech-signal-ingestion...');
+          const res = await fetch('https://hiremax-tech-signal-ingestion.singh-harsimar23.workers.dev');
+          console.log(`[Pipeline] Tech trigger response status: ${res.status}`);
+        } catch (err) {
+          console.error('[Pipeline] Tech ingestion trigger failed:', err);
+        }
+      }
+    })());
+
     // Stage 1: Fetch all data sources (parallel, failures don't kill pipeline)
     const fetchResults = await Promise.allSettled([
       fetchBLS(env),
@@ -852,6 +988,7 @@ export default {
       fetchILO(env),
       fetchRedditSentiment(env),
       fetchHN(env),
+      fetchNewsNarratives(env),
     ]);
     fetchResults.forEach((r, i) => {
       if (r.status === 'rejected') {
@@ -882,16 +1019,30 @@ export default {
     }
     console.log(`[Pipeline] Manual approval requirement is: ${requireManualApproval}`);
 
-    // Stage 3: Generate brief
-    let brief = null;
-    try {
-      brief = await generateBrief(env, requireManualApproval);
-    } catch (e) {
-      console.error('[Pipeline] Brief generation failed:', e);
+    // Stage 3: Generate up to 3 briefs per run (one per distinct pillar)
+    const MAX_BRIEFS_PER_RUN = 3;
+    const generatedBriefs: Array<{ id: string; title: string; core_finding: string; citation_potential: string }> = [];
+    const usedPillars = new Set<string>();
+
+    for (let i = 0; i < MAX_BRIEFS_PER_RUN; i++) {
+      try {
+        const brief = await generateBrief(env, requireManualApproval, usedPillars);
+        if (!brief) {
+          console.log(`[Pipeline] No more unused signals available (generated ${i} briefs).`);
+          break;
+        }
+        generatedBriefs.push(brief);
+        usedPillars.add(brief.pillar || '');
+        console.log(`[Pipeline] Brief ${i + 1}/${MAX_BRIEFS_PER_RUN} generated: "${brief.title}"`);
+        if (i < MAX_BRIEFS_PER_RUN - 1) await sleep(2000); // small gap between brief generations
+      } catch (e) {
+        console.error(`[Pipeline] Brief generation ${i + 1} failed:`, e);
+      }
     }
 
     // Stage 4: Actions based on approval mode
-    if (brief) {
+    for (let i = 0; i < generatedBriefs.length; i++) {
+      const brief = generatedBriefs[i];
       if (requireManualApproval) {
         try {
           await notifySam(env, brief);
@@ -899,11 +1050,10 @@ export default {
           console.error('[Pipeline] Sam notification failed:', e);
         }
       } else {
-        // Trigger Content Factory immediately (trimming to defend against trailing whitespaces/newlines)
         const factoryUrl = env.CONTENT_FACTORY_URL?.trim();
         const adminPassword = env.ADMIN_PASSWORD?.trim();
         if (factoryUrl && adminPassword) {
-          console.log(`[Pipeline] Triggering Content Factory for brief ${brief.id}...`);
+          console.log(`[Pipeline] Triggering Content Factory for brief ${i + 1}: ${brief.id}...`);
           try {
             const res = await fetch(`${factoryUrl}/generate`, {
               method: 'POST',
@@ -914,13 +1064,15 @@ export default {
               body: JSON.stringify({ briefId: brief.id }),
             });
             if (res.ok) {
-              console.log('[Pipeline] Content Factory triggered successfully:', await res.text());
+              console.log(`[Pipeline] Content Factory triggered for brief ${i + 1}.`);
             } else {
-              console.error(`[Pipeline] Content Factory trigger failed: ${res.status} ${await res.text()}`);
+              console.error(`[Pipeline] Content Factory trigger failed (brief ${i + 1}): ${res.status} ${await res.text()}`);
             }
           } catch (e) {
-            console.error('[Pipeline] Content Factory request failed:', e);
+            console.error(`[Pipeline] Content Factory request failed (brief ${i + 1}):`, e);
           }
+          // 10s delay between factory triggers to avoid Gemini rate limits
+          if (i < generatedBriefs.length - 1) await sleep(10000);
         } else {
           console.warn('[Pipeline] CONTENT_FACTORY_URL or ADMIN_PASSWORD not configured. Skipping Content Factory trigger.');
         }

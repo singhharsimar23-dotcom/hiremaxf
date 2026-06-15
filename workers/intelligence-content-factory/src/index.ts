@@ -2,11 +2,18 @@
 // HTTP Worker — triggered by webhook when Sam approves a brief
 // Generates all 8 content formats sequentially (4s delays, Gemini rate-limit safe)
 
+import { extractIntelligence } from './intelligence-extractor';
+import { runQualityGate, getBannedPhrases } from './quality-gate';
+import { injectSEOAEO } from './seo-aeo-injector';
+import { buildTemplateAPrompt, buildTemplateBPrompt } from './templates';
+
 interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   GEMINI_API_KEY: string;
   ADMIN_PASSWORD: string;
+  DISTRIBUTOR_URL?: string;
+  SELF?: Fetcher;
 }
 
 interface ResearchBrief {
@@ -47,10 +54,10 @@ async function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 // ============================================================
 // GEMINI
 // ============================================================
-async function callGemini(env: Env, prompt: string, forceFlash15 = false): Promise<string> {
-  const model = forceFlash15 ? 'gemini-2.5-flash' : 'gemini-2.0-flash';
+async function callGemini(env: Env, prompt: string): Promise<string> {
+  const model = 'gemini-2.0-flash-exp';
   const apiKey = env.GEMINI_API_KEY?.trim();
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -64,12 +71,8 @@ async function callGemini(env: Env, prompt: string, forceFlash15 = false): Promi
         }
       );
       if (res.status === 429) {
-        if (!forceFlash15) {
-          console.warn(`[Gemini] 429 Rate limited on ${model}. Falling back to gemini-2.5-flash...`);
-          return callGemini(env, prompt, true);
-        }
-        console.warn(`[Gemini] Attempt ${attempt}: 429 Rate limited on ${model}. Retrying in 10s...`);
-        await sleep(10000);
+        console.warn(`[Gemini] 429 Rate limited on ${model}. Retrying in 5s...`);
+        await sleep(5000);
         continue;
       }
       if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
@@ -77,11 +80,7 @@ async function callGemini(env: Env, prompt: string, forceFlash15 = false): Promi
       return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     } catch (e) {
       console.error(`[Gemini] Attempt ${attempt} failed on ${model}:`, e);
-      if (!forceFlash15 && attempt === 2) {
-        console.warn(`[Gemini] Failed with ${model}. Falling back to gemini-2.5-flash...`);
-        return callGemini(env, prompt, true);
-      }
-      if (attempt === 2) throw e;
+      if (attempt === 1) throw e;
       await sleep(2000);
     }
   }
@@ -91,16 +90,17 @@ async function callGemini(env: Env, prompt: string, forceFlash15 = false): Promi
 // ============================================================
 // PROMPT SYSTEM
 // ============================================================
-const SYSTEM_PROMPT = `You are the chief research writer for HireMax Intelligence — the most cited source on global labor market data. Your writing style: The Economist's analytical clarity + Paul Graham's directness. Zero corporate fluff. No AI-sounding phrases.
+const SYSTEM_PROMPT = `You are the chief research writer for HireMax Intelligence — the most authoritative independent source on global labor market data. Writing style: The Economist's analytical precision combined with Paul Graham's bluntness. You write like a human who has read the raw government datasets, not a chatbot summarizing articles.
 
-RULES (apply to every piece):
-1. Most surprising data point goes in the first sentence
-2. Sam's personal angle (provided) must appear naturally in the opening section
-3. Every claim tied to a specific number from the research brief
-4. Explicitly name what conventional wisdom is being broken and why
-5. Global scope — not US-only unless the data is US-specific
-6. End with a "Key Data Points" section: 6 stats, one per line, format: "[Stat] ([Source], [Year/Period])"
-7. Never use: "in today's world", "it's no secret", "game-changer", "delve", "leveraging", "as an AI", "certainly"`;
+NON-NEGOTIABLE RULES (violating any = automatic failure):
+1. NEVER open with a generic statement. The first sentence must contain the single most counterintuitive specific number from the data.
+2. Sam's personal angle must appear organically — NOT as a quote block, but woven into the analysis.
+3. Every claim is tethered to a specific number, source, and timeframe. No vague claims.
+4. Name the conventional wisdom explicitly, then dismantle it with data — not opinion.
+5. Global scope by default; US-only if data is US-specific, and flag it.
+6. End with a "Key Data Points" section: exactly 6 stats, format: "[Stat] ([Source], [Period])"
+7. NEVER use: "in today's world", "it's no secret", "game-changer", "delve", "leveraging", "as an AI", "certainly", "navigating", "landscape", "ever-evolving", "it is worth noting", "importantly"
+8. Every 350-400 words, insert a callout box using markdown blockquote: > **Key Insight:** [one-sentence synthesis that would stand alone as a tweet]`;
 
 function buildPrompt(brief: ResearchBrief, contentType: string): string {
   const samsAngle = brief.sams_angle?.trim()
@@ -113,24 +113,31 @@ function buildPrompt(brief: ResearchBrief, contentType: string): string {
     blog_post: `${SYSTEM_PROMPT}
 ${samsAngle}
 
-Write a blog post for hiremax.site/research.
+Write a long-form research article for hiremax.site/research.
 
 RESEARCH BRIEF:
 Title: ${brief.title}
 Core finding: ${brief.core_finding}
 Data: ${dataStr}
-Conventional wisdom broken: ${brief.contrarian_angle}
-Keywords to include naturally: ${kwStr}
+Conventional wisdom being demolished: ${brief.contrarian_angle}
+Target keywords (weave in naturally, never force): ${kwStr}
 
-FORMAT REQUIREMENTS:
-- Length: 1,200-1,800 words
-- H1: post title (exact match to brief title)
-- H2 every 250-300 words — each must be a complete question OR standalone factual statement
-- Under each H2: first paragraph = exactly 40-60 words that fully answers the H2 question (called "answer capsule")
-- FAQ section at end: 4-5 questions a job seeker would actually ask, with 50-80 word answers
-- Final section "Key Data Points": 6 stats, one per line
-- Final paragraph: 2-sentence CTA linking to HireMax product naturally
-- Output: markdown only`,
+STRUCTURE (follow exactly, in order):
+1. H1: post title — exact match to brief title
+2. ANSWER CAPSULE: **Bold paragraph, 50-70 words.** Must be a self-contained summary that answers "what does this mean for someone's career right now?" AI engines extract this directly — make it the clearest, most data-dense thing on the page.
+3. H2: "The Data" — what the raw numbers actually say. First paragraph (40-60 words) fully answers the H2.
+4. > **Key Insight:** [one-sentence synthesis]
+5. H2: "What Everyone Is Getting Wrong" — name the consensus, then destroy it with specific numbers.
+6. > **Key Insight:** [one-sentence synthesis]
+7. H2: "The Historical Pattern" — what has happened in 2-3 comparable historical moments.
+8. H2: "What Comes Next" — one falsifiable prediction with exact timeframe and explicit invalidation conditions.
+9. > **Key Insight:** [one-sentence synthesis]
+10. H2: "FAQ" — exactly 4 Q&A pairs. Questions must be what a real job seeker or hiring manager would type into Google. Answers: 50-80 words, data-backed, no hedging.
+11. H2: "Key Data Points" — exactly 6 stats, one per line, format: "[Stat] ([Source], [Period])"
+12. Final 2 sentences: natural CTA toward HireMax product (not salesy, just contextually relevant).
+
+LENGTH: 1,500-2,200 words total. Short articles signal thin content — don't cut corners.
+OUTPUT: markdown only, no code fences around it`,
 
     linkedin_long: `${SYSTEM_PROMPT}
 
@@ -254,7 +261,7 @@ function setUTCHour(date: Date, hour: number): Date {
 
 function scheduleContent(type: string, approvedAt: Date): Date | null {
   const schedule: Record<string, () => Date | null> = {
-    blog_post: () => new Date(approvedAt.getTime() + 5 * 60 * 1000), // +5 min
+    blog_post: () => approvedAt, // Immediate publishing
     linkedin_long: () => setUTCHour(addDays(approvedAt, 1), 7),
     linkedin_short_1: () => setUTCHour(addDays(approvedAt, 1), 12),
     linkedin_carousel: () => setUTCHour(addDays(approvedAt, 2), 7),
@@ -356,7 +363,7 @@ async function generateAllContent(env: Env, briefId: string, origin: string): Pr
         '@type': 'Article',
         headline: brief.title,
         description: brief.core_finding.slice(0, 160),
-        author: { '@type': 'Organization', name: 'HireMax Intelligence', url: 'https://www.hiremax.site' },
+        author: { '@type': 'Person', name: "Harsimar 'sam' Singh", jobTitle: 'Founder', worksFor: { '@type': 'Organization', name: 'HireMax' }, url: 'https://www.hiremax.site' },
         publisher: { '@type': 'Organization', name: 'HireMax', url: 'https://www.hiremax.site' },
         keywords: brief.target_keywords.join(', '),
       },
@@ -421,10 +428,11 @@ async function generateAllContent(env: Env, briefId: string, origin: string): Pr
     const remainingTypes = contentTypes.filter(t => t !== contentType && !existingTypes.has(t));
     if (remainingTypes.length > 0) {
       console.log(`[Factory] Chaining to next type. Remaining types count: ${remainingTypes.length}`);
-      await sleep(1000);
       try {
-        console.log(`[Factory] Triggering self webhook: ${origin}/generate`);
-        const res = await fetch(`${origin}/generate`, {
+        const url = env.SELF ? 'http://self/generate' : `${origin}/generate`;
+        const caller = env.SELF || { fetch: globalThis.fetch };
+        console.log(`[Factory] Triggering self webhook: ${url}`);
+        const res = await caller.fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -442,6 +450,698 @@ async function generateAllContent(env: Env, briefId: string, origin: string): Pr
 
   } catch (e) {
     console.error(`[Factory] ❌ Failed to generate ${contentType}:`, e);
+  }
+}
+
+// ============================================================
+// NEW MULTI-SIGNAL ANTI-SLOP WORKFLOWS
+// ============================================================
+async function triggerDistributor(env: Env) {
+  const distributorUrl = env.DISTRIBUTOR_URL || 'https://hiremax-intelligence-distributor.singh-harsimar23.workers.dev';
+  try {
+    const res = await fetch(`${distributorUrl}/trigger-distribute`, {
+      method: 'POST',
+    });
+    console.log(`[Factory] Distributor trigger response: status=${res.status}`);
+  } catch (e) {
+    console.error('[Factory] Failed to trigger distributor:', e);
+  }
+}
+
+// HELPER FOR SELF-TRIGGER WEBHOOK
+async function selfTrigger(env: Env, origin: string, password: string | undefined, body: any) {
+  try {
+    const url = env.SELF ? 'http://self/generate' : `${origin}/generate`;
+    const caller = env.SELF || { fetch: globalThis.fetch };
+    const res = await caller.fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${password?.trim()}`,
+      },
+      body: JSON.stringify(body),
+    });
+    console.log(`[SelfTrigger] ${body.type} response: status=${res.status}`);
+  } catch (err) {
+    console.error(`[SelfTrigger] ${body.type} failed:`, err);
+  }
+}
+
+// --------------------------------------------------
+// STANDARD BRIEF WORKFLOW
+// --------------------------------------------------
+
+// STEP 1: Extract Intelligence from Signal
+async function generateStandardBrief(env: Env, signalId: string, origin: string): Promise<void> {
+  console.log(`[Factory] Standard Brief Step 1: Ingestion & Extraction for signalId=${signalId}`);
+  try {
+    const signals = await supabaseQuery(env, `domain_signals?id=eq.${signalId}&limit=1`) as any[];
+    if (!signals || signals.length === 0) {
+      throw new Error(`Signal ${signalId} not found`);
+    }
+    const signal = signals[0];
+
+    const intel = await extractIntelligence(env as any, signal);
+    
+    // Trigger Step 2: Content Generation
+    await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+      type: 'standard_intelligence_generate',
+      signal_id: signalId,
+      intel,
+    });
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateStandardBrief Step 1:`, err);
+  }
+}
+
+// STEP 2: Content Generation
+async function generateStandardBrief_generate(
+  env: Env,
+  signalId: string,
+  intel: any,
+  origin: string,
+  attempt = 1,
+  appendNotes = '',
+  existingPieceId?: string,
+  existingBlogPostId?: string
+): Promise<void> {
+  console.log(`[Factory] Standard Brief Step 2: Content Generation for signalId=${signalId}, attempt=${attempt}`);
+  try {
+    const bannedPhrases = await getBannedPhrases(env as any);
+
+    let prompt = buildTemplateAPrompt(intel, bannedPhrases);
+    if (appendNotes) {
+      prompt += `\n\nREGENERATION NOTES/FEEDBACK (Please correct these violations in the rewrite):\n${appendNotes}`;
+    }
+
+    const geminiRes = await callGemini(env, prompt);
+    const jsonMatch = geminiRes.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`Invalid JSON format returned from Gemini: ${geminiRes}`);
+    }
+    const parsed = JSON.parse(jsonMatch[0].trim());
+
+    const slug = generateSlug(parsed.title);
+    const seoMeta = {
+      description: parsed.content.slice(0, 160).replace(/\*\*/g, '').trim(),
+      keywords: (parsed.secondary_keywords || []).join(', '),
+      og_title: parsed.title,
+      og_description: parsed.content.slice(0, 100).replace(/\*\*/g, '').trim(),
+    };
+
+    const pieceData = {
+      title: parsed.title,
+      content: parsed.content,
+      content_type: 'blog_post',
+      status: 'pending',
+      platform: 'blog',
+      scheduled_for: new Date().toISOString(),
+    };
+
+    let pieceId = existingPieceId;
+    if (existingPieceId) {
+      await supabaseQuery(env, `content_pieces?id=eq.${existingPieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(pieceData),
+        headers: { Prefer: 'return=minimal' },
+      });
+    } else {
+      const inserted = await supabaseQuery(env, 'content_pieces', {
+        method: 'POST',
+        body: JSON.stringify(pieceData),
+      }) as any[];
+      if (!inserted || inserted.length === 0) throw new Error("Failed to insert content piece");
+      pieceId = inserted[0].id;
+    }
+
+    const faqPairs = parsed.faq || [];
+    const blogPostData = {
+      content_piece_id: pieceId,
+      slug,
+      title: parsed.title,
+      content_markdown: parsed.content,
+      pillar: intel.vertical,
+      faq_pairs: faqPairs,
+      status: 'draft',
+      seo_meta: seoMeta,
+      schema_markup: {},
+    };
+
+    let blogPostId = existingBlogPostId;
+    if (existingBlogPostId) {
+      await supabaseQuery(env, `blog_posts?id=eq.${existingBlogPostId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(blogPostData),
+        headers: { Prefer: 'return=minimal' },
+      });
+    } else {
+      const inserted = await supabaseQuery(env, 'blog_posts', {
+        method: 'POST',
+        body: JSON.stringify(blogPostData),
+      }) as any[];
+      if (!inserted || inserted.length === 0) throw new Error("Failed to insert blog post");
+      blogPostId = inserted[0].id;
+    }
+
+    // Trigger Step 3: QA
+    await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+      type: 'standard_intelligence_qa',
+      signal_id: signalId,
+      intel,
+      piece_id: pieceId,
+      blog_post_id: blogPostId,
+      attempt,
+    });
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateStandardBrief Step 2:`, err);
+  }
+}
+
+// STEP 3: Quality Gate & Decision
+async function generateStandardBrief_qa(
+  env: Env,
+  signalId: string,
+  intel: any,
+  pieceId: string,
+  blogPostId: string,
+  origin: string,
+  attempt: number
+): Promise<void> {
+  console.log(`[Factory] Standard Brief Step 3: QA for signalId=${signalId}, pieceId=${pieceId}, attempt=${attempt}`);
+  try {
+    const qgRes = await runQualityGate(env as any, pieceId, attempt);
+
+    if (qgRes.decision === 'publish') {
+      const composite = (qgRes.scores.specificity_score + qgRes.scores.non_obviousness_score + qgRes.scores.falsifiability_score + qgRes.scores.voice_score + qgRes.scores.aeo_readiness) / 5;
+      
+      await supabaseQuery(env, `content_pieces?id=eq.${pieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'approved',
+          quality_score: composite,
+        }),
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseQuery(env, `domain_signals?id=eq.${signalId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          content_generated: true,
+          insight_extracted: true,
+          quality_gate_score: qgRes.scores,
+          quality_gate_decision: 'publish',
+        }),
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      if (intel.prediction && intel.prediction.confidence_score >= 6) {
+        await supabaseQuery(env, 'predictions', {
+          method: 'POST',
+          body: JSON.stringify({
+            prediction_text: intel.prediction.prediction_statement,
+            prediction_direction: intel.prediction.direction,
+            prediction_magnitude_range: intel.prediction.magnitude_range,
+            prediction_metric: intel.prediction.prediction_metric,
+            prediction_source: intel.prediction.prediction_source,
+            prediction_timeframe: intel.prediction.prediction_timeframe,
+            confidence_score: intel.prediction.confidence_score,
+            invalidation_conditions: intel.prediction.invalidation_conditions,
+            content_piece_id: pieceId,
+          }),
+          headers: { Prefer: 'return=minimal' },
+        });
+      }
+
+      // Trigger Step 4: SEO
+      await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+        type: 'standard_intelligence_seo',
+        piece_id: pieceId,
+      });
+
+    } else if (qgRes.decision === 'regenerate' && attempt < 3) {
+      console.log(`[Factory] QA requested regeneration for Standard Brief attempt #${attempt}. Recursing...`);
+      await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+        type: 'standard_intelligence_generate',
+        signal_id: signalId,
+        intel,
+        attempt: attempt + 1,
+        appendNotes: qgRes.notes || '',
+        existingPieceId: pieceId,
+        existingBlogPostId: blogPostId,
+      });
+    } else {
+      console.log(`[Factory] Standard Brief killed/failed. Reason: ${qgRes.notes}`);
+      await supabaseQuery(env, `content_pieces?id=eq.${pieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'killed' }),
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseQuery(env, `domain_signals?id=eq.${signalId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          content_generated: false,
+          quality_gate_score: qgRes.scores,
+          quality_gate_decision: 'kill',
+        }),
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateStandardBrief Step 3:`, err);
+  }
+}
+
+// STEP 4: SEO Optimization & Distributor Trigger
+async function generateStandardBrief_seo(env: Env, pieceId: string): Promise<void> {
+  console.log(`[Factory] Standard Brief Step 4: SEO Optimization for pieceId=${pieceId}`);
+  try {
+    await injectSEOAEO(env as any, pieceId);
+    await triggerDistributor(env);
+    console.log(`[Factory] Standard Brief Step 4 Complete. Published: ${pieceId}`);
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateStandardBrief Step 4:`, err);
+  }
+}
+
+
+// --------------------------------------------------
+// CONVERGENCE BRIEF WORKFLOW
+// --------------------------------------------------
+
+// STEP 1: Extract Intelligence from Signal
+async function generateConvergenceBrief(env: Env, convergenceSignalId: string, origin: string): Promise<void> {
+  console.log(`[Factory] Convergence Brief Step 1: Extraction for convergenceSignalId=${convergenceSignalId}`);
+  try {
+    const convSignals = await supabaseQuery(env, `convergence_signals?id=eq.${convergenceSignalId}&limit=1`) as any[];
+    if (!convSignals || convSignals.length === 0) {
+      throw new Error(`Convergence signal ${convergenceSignalId} not found`);
+    }
+    const convSignal = convSignals[0];
+
+    const signalIds = convSignal.signal_ids || [];
+    if (signalIds.length === 0) {
+      throw new Error(`Convergence signal ${convergenceSignalId} has no signal_ids`);
+    }
+    const signals = await supabaseQuery(env, `domain_signals?id=eq.${signalIds[0]}&limit=1`) as any[];
+    if (!signals || signals.length === 0) {
+      throw new Error(`First signal ${signalIds[0]} not found in domain_signals`);
+    }
+    const signal = signals[0];
+
+    const intel = await extractIntelligence(env as any, signal);
+
+    // Trigger Step 2: Content Generation
+    await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+      type: 'convergence_brief_generate',
+      convergence_signal_id: convergenceSignalId,
+      conv_signal_details: convSignal,
+      intel,
+    });
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateConvergenceBrief Step 1:`, err);
+  }
+}
+
+// STEP 2: Content Generation
+async function generateConvergenceBrief_generate(
+  env: Env,
+  convergenceSignalId: string,
+  convSignalDetails: any,
+  intel: any,
+  origin: string,
+  attempt = 1,
+  appendNotes = '',
+  existingPieceId?: string,
+  existingBlogPostId?: string
+): Promise<void> {
+  console.log(`[Factory] Convergence Brief Step 2: Content Generation for convergenceSignalId=${convergenceSignalId}, attempt=${attempt}`);
+  try {
+    const bannedPhrases = await getBannedPhrases(env as any);
+
+    let prompt = buildTemplateBPrompt(intel, convSignalDetails, bannedPhrases);
+    if (appendNotes) {
+      prompt += `\n\nREGENERATION NOTES/FEEDBACK (Please correct these violations in the rewrite):\n${appendNotes}`;
+    }
+
+    const geminiRes = await callGemini(env, prompt);
+    const jsonMatch = geminiRes.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`Invalid JSON format returned from Gemini: ${geminiRes}`);
+    }
+    const parsed = JSON.parse(jsonMatch[0].trim());
+
+    const slug = generateSlug(parsed.title);
+    const seoMeta = {
+      description: parsed.content.slice(0, 160).replace(/\*\*/g, '').trim(),
+      keywords: `convergence, ${convSignalDetails.vertical_a}, ${convSignalDetails.vertical_b}, hiring data`,
+      og_title: parsed.title,
+      og_description: parsed.content.slice(0, 100).replace(/\*\*/g, '').trim(),
+    };
+
+    const pieceData = {
+      title: parsed.title,
+      content: parsed.content,
+      content_type: 'blog_post',
+      status: 'pending',
+      platform: 'blog',
+      scheduled_for: new Date().toISOString(),
+    };
+
+    let pieceId = existingPieceId;
+    if (existingPieceId) {
+      await supabaseQuery(env, `content_pieces?id=eq.${existingPieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(pieceData),
+        headers: { Prefer: 'return=minimal' },
+      });
+    } else {
+      const inserted = await supabaseQuery(env, 'content_pieces', {
+        method: 'POST',
+        body: JSON.stringify(pieceData),
+      }) as any[];
+      if (!inserted || inserted.length === 0) throw new Error("Failed to insert content piece");
+      pieceId = inserted[0].id;
+    }
+
+    const faqPairs = parsed.faq || [];
+    const blogPostData = {
+      content_piece_id: pieceId,
+      slug,
+      title: parsed.title,
+      content_markdown: parsed.content,
+      pillar: `${convSignalDetails.vertical_a}_${convSignalDetails.vertical_b}`,
+      faq_pairs: faqPairs,
+      status: 'draft',
+      seo_meta: seoMeta,
+      schema_markup: {},
+    };
+
+    let blogPostId = existingBlogPostId;
+    if (existingBlogPostId) {
+      await supabaseQuery(env, `blog_posts?id=eq.${existingBlogPostId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(blogPostData),
+        headers: { Prefer: 'return=minimal' },
+      });
+    } else {
+      const inserted = await supabaseQuery(env, 'blog_posts', {
+        method: 'POST',
+        body: JSON.stringify(blogPostData),
+      }) as any[];
+      if (!inserted || inserted.length === 0) throw new Error("Failed to insert blog post");
+      blogPostId = inserted[0].id;
+    }
+
+    await supabaseQuery(env, `convergence_signals?id=eq.${convergenceSignalId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content_piece_id: pieceId,
+        status: 'generated',
+      }),
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    // Trigger Step 3: QA
+    await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+      type: 'convergence_brief_qa',
+      convergence_signal_id: convergenceSignalId,
+      conv_signal_details: convSignalDetails,
+      intel,
+      piece_id: pieceId,
+      blog_post_id: blogPostId,
+      attempt,
+    });
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateConvergenceBrief Step 2:`, err);
+  }
+}
+
+// STEP 3: Quality Gate & Decision
+async function generateConvergenceBrief_qa(
+  env: Env,
+  convergenceSignalId: string,
+  convSignalDetails: any,
+  intel: any,
+  pieceId: string,
+  blogPostId: string,
+  origin: string,
+  attempt: number
+): Promise<void> {
+  console.log(`[Factory] Convergence Brief Step 3: QA for convergenceSignalId=${convergenceSignalId}, pieceId=${pieceId}, attempt=${attempt}`);
+  try {
+    const qgRes = await runQualityGate(env as any, pieceId, attempt);
+
+    if (qgRes.decision === 'publish') {
+      const composite = (qgRes.scores.specificity_score + qgRes.scores.non_obviousness_score + qgRes.scores.falsifiability_score + qgRes.scores.voice_score + qgRes.scores.aeo_readiness) / 5;
+
+      await supabaseQuery(env, `content_pieces?id=eq.${pieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'approved',
+          quality_score: composite,
+        }),
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseQuery(env, `convergence_signals?id=eq.${convergenceSignalId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'published' }),
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      // Trigger Step 4: SEO
+      await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+        type: 'convergence_brief_seo',
+        piece_id: pieceId,
+      });
+
+    } else if (qgRes.decision === 'regenerate' && attempt < 3) {
+      console.log(`[Factory] QA requested regeneration for Convergence Brief attempt #${attempt}. Recursing...`);
+      await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+        type: 'convergence_brief_generate',
+        convergence_signal_id: convergenceSignalId,
+        conv_signal_details: convSignalDetails,
+        intel,
+        attempt: attempt + 1,
+        appendNotes: qgRes.notes || '',
+        existingPieceId: pieceId,
+        existingBlogPostId: blogPostId,
+      });
+    } else {
+      console.log(`[Factory] Convergence Brief killed/failed. Reason: ${qgRes.notes}`);
+      await supabaseQuery(env, `content_pieces?id=eq.${pieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'killed' }),
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await supabaseQuery(env, `convergence_signals?id=eq.${convergenceSignalId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'failed' }),
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateConvergenceBrief Step 3:`, err);
+  }
+}
+
+// STEP 4: SEO Optimization & Distributor Trigger
+async function generateConvergenceBrief_seo(env: Env, pieceId: string): Promise<void> {
+  console.log(`[Factory] Convergence Brief Step 4: SEO Optimization for pieceId=${pieceId}`);
+  try {
+    await injectSEOAEO(env as any, pieceId);
+    await triggerDistributor(env);
+    console.log(`[Factory] Convergence Brief Step 4 Complete. Published: ${pieceId}`);
+  } catch (err: any) {
+    console.error(`[Factory] Error in generateConvergenceBrief Step 4:`, err);
+  }
+}
+
+
+// --------------------------------------------------
+// PREDICTION OUTCOME BRIEF WORKFLOW
+// --------------------------------------------------
+
+// STEP 1: Content Generation
+async function generatePredictionOutcomeBrief(env: Env, predictionId: string, origin: string): Promise<void> {
+  await generatePredictionOutcomeBrief_generate(env, predictionId, origin, 1);
+}
+
+async function generatePredictionOutcomeBrief_generate(
+  env: Env,
+  predictionId: string,
+  origin: string,
+  attempt = 1,
+  appendNotes = '',
+  existingPieceId?: string,
+  existingBlogPostId?: string
+): Promise<void> {
+  console.log(`[Factory] Prediction Outcome Step 1: Content Generation for predictionId=${predictionId}, attempt=${attempt}`);
+  try {
+    const predictions = await supabaseQuery(env, `predictions?id=eq.${predictionId}&limit=1`) as any[];
+    if (!predictions || predictions.length === 0) {
+      throw new Error(`Prediction ${predictionId} not found`);
+    }
+    const prediction = predictions[0];
+
+    let prompt = `You are Harsimar 'sam' Singh, the founder of HireMax. Write a short, one-paragraph update (called-it / missed-it piece) for our research audience.
+You must state the original prediction verbatim, explain the actual outcome, and state whether the prediction was directionally correct.
+Be honest, direct, and slightly combative/factual even when wrong. No corporate fluff, no AI slop.
+
+Original Prediction: "${prediction.prediction_text}"
+Timeframe: ${prediction.prediction_timeframe}
+Stated Metric: ${prediction.prediction_metric}
+Actual Outcome Value: ${prediction.outcome_value}
+Directional Correctness: ${prediction.prediction_correct ? 'CORRECT' : 'WRONG/INCORRECT'}
+Accuracy Note: ${prediction.accuracy_note}
+
+You MUST return exactly a JSON object matching this structure (no markdown code blocks, just pure JSON):
+{
+  "title": "Headline (short, punchy title)",
+  "content": "A single, strong paragraph containing the verbatim prediction, actual outcome, and directional correctness statement. Keep it under 150 words."
+}`;
+
+    if (appendNotes) {
+      prompt += `\n\nREGENERATION NOTES/FEEDBACK (Please correct these violations in the rewrite):\n${appendNotes}`;
+    }
+
+    const geminiRes = await callGemini(env, prompt);
+    const jsonMatch = geminiRes.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`Invalid JSON format returned from Gemini: ${geminiRes}`);
+    }
+    const parsed = JSON.parse(jsonMatch[0].trim());
+
+    const slug = generateSlug(parsed.title);
+    const seoMeta = {
+      description: parsed.content.slice(0, 160).replace(/\*\*/g, '').trim(),
+      keywords: `prediction outcome, ${prediction.prediction_metric}, hiring data`,
+      og_title: parsed.title,
+      og_description: parsed.content.slice(0, 100).replace(/\*\*/g, '').trim(),
+    };
+
+    const pieceData = {
+      title: parsed.title,
+      content: parsed.content,
+      content_type: 'blog_post',
+      status: 'pending',
+      platform: 'blog',
+      scheduled_for: new Date().toISOString(),
+    };
+
+    let pieceId = existingPieceId;
+    if (existingPieceId) {
+      await supabaseQuery(env, `content_pieces?id=eq.${existingPieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(pieceData),
+        headers: { Prefer: 'return=minimal' },
+      });
+    } else {
+      const inserted = await supabaseQuery(env, 'content_pieces', {
+        method: 'POST',
+        body: JSON.stringify(pieceData),
+      }) as any[];
+      if (!inserted || inserted.length === 0) throw new Error("Failed to insert content piece");
+      pieceId = inserted[0].id;
+    }
+
+    const blogPostData = {
+      content_piece_id: pieceId,
+      slug,
+      title: parsed.title,
+      content_markdown: parsed.content,
+      pillar: 'prediction_outcome',
+      faq_pairs: [],
+      status: 'draft',
+      seo_meta: seoMeta,
+      schema_markup: {},
+    };
+
+    let blogPostId = existingBlogPostId;
+    if (existingBlogPostId) {
+      await supabaseQuery(env, `blog_posts?id=eq.${existingBlogPostId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(blogPostData),
+        headers: { Prefer: 'return=minimal' },
+      });
+    } else {
+      const inserted = await supabaseQuery(env, 'blog_posts', {
+        method: 'POST',
+        body: JSON.stringify(blogPostData),
+      }) as any[];
+      if (!inserted || inserted.length === 0) throw new Error("Failed to insert blog post");
+      blogPostId = inserted[0].id;
+    }
+
+    await supabaseQuery(env, `predictions?id=eq.${predictionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content_piece_id: pieceId }),
+      headers: { Prefer: 'return=minimal' },
+    });
+
+    // Trigger Step 2: QA
+    await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+      type: 'prediction_outcome_qa',
+      prediction_id: predictionId,
+      piece_id: pieceId,
+      blog_post_id: blogPostId,
+      attempt,
+    });
+  } catch (err: any) {
+    console.error(`[Factory] Error in generatePredictionOutcomeBrief Step 1:`, err);
+  }
+}
+
+// STEP 2: Quality Gate & Decision
+async function generatePredictionOutcomeBrief_qa(
+  env: Env,
+  predictionId: string,
+  pieceId: string,
+  blogPostId: string,
+  origin: string,
+  attempt: number
+): Promise<void> {
+  console.log(`[Factory] Prediction Outcome Step 2: QA for predictionId=${predictionId}, pieceId=${pieceId}, attempt=${attempt}`);
+  try {
+    const qgRes = await runQualityGate(env as any, pieceId, attempt);
+
+    if (qgRes.decision === 'publish') {
+      const composite = (qgRes.scores.specificity_score + qgRes.scores.non_obviousness_score + qgRes.scores.falsifiability_score + qgRes.scores.voice_score + qgRes.scores.aeo_readiness) / 5;
+
+      await supabaseQuery(env, `content_pieces?id=eq.${pieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: 'approved',
+          quality_score: composite,
+        }),
+        headers: { Prefer: 'return=minimal' },
+      });
+
+      await triggerDistributor(env);
+      console.log(`[Factory] Prediction Outcome Brief published successfully: ${pieceId}`);
+
+    } else if (qgRes.decision === 'regenerate' && attempt < 3) {
+      console.log(`[Factory] QA requested regeneration for Prediction Outcome Brief attempt #${attempt}. Recursing...`);
+      await selfTrigger(env, origin, env.ADMIN_PASSWORD, {
+        type: 'prediction_outcome_generate',
+        prediction_id: predictionId,
+        attempt: attempt + 1,
+        appendNotes: qgRes.notes || '',
+        existingPieceId: pieceId,
+        existingBlogPostId: blogPostId,
+      });
+    } else {
+      console.log(`[Factory] Prediction Outcome Brief killed/failed. Reason: ${qgRes.notes}`);
+      await supabaseQuery(env, `content_pieces?id=eq.${pieceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'killed' }),
+        headers: { Prefer: 'return=minimal' },
+      });
+    }
+  } catch (err: any) {
+    console.error(`[Factory] Error in generatePredictionOutcomeBrief Step 2:`, err);
   }
 }
 
@@ -473,12 +1173,99 @@ export default {
       return new Response('Unauthorized', { status: 401 });
     }
 
-    const body = await request.json() as { briefId: string };
-    if (!body.briefId) {
-      return new Response(JSON.stringify({ error: 'briefId required' }), { status: 400 });
+    const body = await request.json() as any;
+    const origin = new URL(request.url).origin;
+
+    if (body.type) {
+      if (body.type === 'standard_intelligence') {
+        const signalId = body.signal_id || body.signalId;
+        if (!signalId) return new Response(JSON.stringify({ error: 'signal_id required for standard_intelligence' }), { status: 400 });
+        ctx.waitUntil(
+          generateStandardBrief(env, signalId, origin).catch(e => console.error('[Factory] Standard Brief generation failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true, message: 'Standard brief generation started' }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'https://www.hiremax.site' },
+        });
+      } else if (body.type === 'standard_intelligence_generate') {
+        const signalId = body.signal_id || body.signalId;
+        ctx.waitUntil(
+          generateStandardBrief_generate(env, signalId, body.intel, origin, body.attempt, body.appendNotes, body.existingPieceId, body.existingBlogPostId)
+            .catch(e => console.error('[Factory] Standard Brief generation step 2 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else if (body.type === 'standard_intelligence_qa') {
+        const signalId = body.signal_id || body.signalId;
+        ctx.waitUntil(
+          generateStandardBrief_qa(env, signalId, body.intel, body.piece_id, body.blog_post_id, origin, body.attempt)
+            .catch(e => console.error('[Factory] Standard Brief QA step 3 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else if (body.type === 'standard_intelligence_seo') {
+        ctx.waitUntil(
+          generateStandardBrief_seo(env, body.piece_id)
+            .catch(e => console.error('[Factory] Standard Brief SEO step 4 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else if (body.type === 'convergence_brief') {
+        const convSignalId = body.convergence_signal_id || body.convergenceSignalId;
+        if (!convSignalId) return new Response(JSON.stringify({ error: 'convergence_signal_id required for convergence_brief' }), { status: 400 });
+        ctx.waitUntil(
+          generateConvergenceBrief(env, convSignalId, origin).catch(e => console.error('[Factory] Convergence Brief generation failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true, message: 'Convergence brief generation started' }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'https://www.hiremax.site' },
+        });
+      } else if (body.type === 'convergence_brief_generate') {
+        const convSignalId = body.convergence_signal_id || body.convergenceSignalId;
+        ctx.waitUntil(
+          generateConvergenceBrief_generate(env, convSignalId, body.conv_signal_details, body.intel, origin, body.attempt, body.appendNotes, body.existingPieceId, body.existingBlogPostId)
+            .catch(e => console.error('[Factory] Convergence Brief generation step 2 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else if (body.type === 'convergence_brief_qa') {
+        const convSignalId = body.convergence_signal_id || body.convergenceSignalId;
+        ctx.waitUntil(
+          generateConvergenceBrief_qa(env, convSignalId, body.conv_signal_details, body.intel, body.piece_id, body.blog_post_id, origin, body.attempt)
+            .catch(e => console.error('[Factory] Convergence Brief QA step 3 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else if (body.type === 'convergence_brief_seo') {
+        ctx.waitUntil(
+          generateConvergenceBrief_seo(env, body.piece_id)
+            .catch(e => console.error('[Factory] Convergence Brief SEO step 4 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else if (body.type === 'prediction_outcome') {
+        const predId = body.prediction_id || body.predictionId;
+        if (!predId) return new Response(JSON.stringify({ error: 'prediction_id required for prediction_outcome' }), { status: 400 });
+        ctx.waitUntil(
+          generatePredictionOutcomeBrief(env, predId, origin).catch(e => console.error('[Factory] Prediction Outcome Brief generation failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true, message: 'Prediction outcome brief generation started' }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'https://www.hiremax.site' },
+        });
+      } else if (body.type === 'prediction_outcome_generate') {
+        const predId = body.prediction_id || body.predictionId;
+        ctx.waitUntil(
+          generatePredictionOutcomeBrief_generate(env, predId, origin, body.attempt, body.appendNotes, body.existingPieceId, body.existingBlogPostId)
+            .catch(e => console.error('[Factory] Prediction Outcome Brief generation step 2 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else if (body.type === 'prediction_outcome_qa') {
+        const predId = body.prediction_id || body.predictionId;
+        ctx.waitUntil(
+          generatePredictionOutcomeBrief_qa(env, predId, body.piece_id, body.blog_post_id, origin, body.attempt)
+            .catch(e => console.error('[Factory] Prediction Outcome Brief QA step 3 failed:', e))
+        );
+        return new Response(JSON.stringify({ ok: true }));
+      } else {
+        return new Response(JSON.stringify({ error: `Unknown type: ${body.type}` }), { status: 400 });
+      }
     }
 
-    const origin = new URL(request.url).origin;
+    if (!body.briefId) {
+      return new Response(JSON.stringify({ error: 'briefId or type required' }), { status: 400 });
+    }
 
     // Run generation in background using native ExecutionContext
     ctx.waitUntil(

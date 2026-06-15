@@ -1,0 +1,14 @@
+name = "hiremax-prediction-outcome-checker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ENVIRONMENT = "production"
+CONTENT_FACTORY_URL = "https://hiremax-intelligence-content-factory.singh-harsimar23.workers.dev"
+
+[[kv_namespaces]]
+binding = "INTELLIGENCE_KV"
+id = "636ba95ce2d5456f855bcc45b2b92a48"
+
+[triggers]
+crons = ["0 6 * * *"]

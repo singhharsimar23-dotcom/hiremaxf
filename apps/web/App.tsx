@@ -806,7 +806,7 @@ function App() {
             ? 'dashboard'
             : view;
 
-    const showNav = activeView !== 'landing' && activeView !== 'auth' && user;
+    const showNav = activeView !== 'landing' && activeView !== 'auth' && (user || activeView === 'research' || activeView === 'research-post');
     const isLegalPage = activeView === 'terms' || activeView === 'privacy' || activeView === 'refund';
     const showFooter = isLegalPage || activeView === 'pricing';
 
@@ -899,6 +899,7 @@ function App() {
                                 onViewTerms={() => handleSetView('terms')}
                                 onViewPrivacy={() => handleSetView('privacy')}
                                 onViewRefund={() => handleSetView('refund')}
+                                onViewResearch={() => handleSetView('research')}
                             />}
                             {activeView === 'auth' && (
                                 <AuthView

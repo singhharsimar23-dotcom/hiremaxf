@@ -4,8 +4,9 @@ import {
   ArrowRight, Sparkles, ShieldCheck, Briefcase, Linkedin,
   FileText, TrendingUp, Check, ChevronRight, Star, Zap, AlertTriangle, Users, Timer,
   CheckCircle, Lock, Info, Gauge, Upload, FileSearch, XCircle, BarChart3, Eye, Clock, UserX, Brain, Shield, Target,
-  ChevronDown, Menu, X as XIcon, HelpCircle, Plus, Minus
+  ChevronDown, Menu, X as XIcon, HelpCircle, Plus, Minus, BookOpen
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   onGetStarted: () => void;
@@ -13,9 +14,104 @@ interface Props {
   onViewTerms?: () => void;
   onViewPrivacy?: () => void;
   onViewRefund?: () => void;
+  onViewResearch?: () => void;
 }
 
 
+
+/* ─── Latest Research Teaser ─── */
+const TEASER_PILLAR_COLORS: Record<string, string> = {
+  entry_level_collapse: '#EF4444',
+  compensation_reality: '#10B981',
+  ai_hiring_impact: '#8B5CF6',
+  remote_work_divide: '#3B82F6',
+  skills_velocity: '#F59E0B',
+  macro: '#3B82F6',
+  tech: '#8B5CF6',
+  convergence: '#F59E0B',
+};
+const TEASER_PILLAR_LABELS: Record<string, string> = {
+  entry_level_collapse: 'Entry-Level Collapse',
+  compensation_reality: 'Compensation Reality',
+  ai_hiring_impact: 'AI Hiring Impact',
+  remote_work_divide: 'Remote Work Divide',
+  skills_velocity: 'Skills Velocity',
+  macro: 'Macro Trends',
+  tech: 'Technology Signal',
+  convergence: 'Convergence Analysis',
+};
+
+const LatestResearchTeaser: React.FC<{ onViewResearch?: () => void }> = ({ onViewResearch }) => {
+  const [posts, setPosts] = useState<Array<{ id: string; title: string; pillar: string; seo_meta: { description?: string } }>>([]);
+  useEffect(() => {
+    if (!onViewResearch) return;
+    (async () => {
+      const { data } = await supabase
+        .from('blog_posts')
+        .select('id, title, pillar, seo_meta')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false })
+        .limit(3);
+      if (data) setPosts(data as any);
+    })();
+  }, [onViewResearch]);
+
+  if (!onViewResearch || posts.length === 0) return null;
+
+  return (
+    <section className="py-14 px-6 bg-[#0A0A0F] border-t border-white/5">
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-7">
+          <div className="flex items-center gap-2.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            <p className="text-blue-400 text-[10px] font-black uppercase tracking-widest">Live Intelligence</p>
+          </div>
+          <button
+            onClick={onViewResearch}
+            className="text-slate-500 hover:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+          >
+            All research <ArrowRight size={11} />
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {posts.map((post) => {
+            const color = TEASER_PILLAR_COLORS[post.pillar] || '#3B82F6';
+            const label = TEASER_PILLAR_LABELS[post.pillar] || post.pillar;
+            return (
+              <button
+                key={post.id}
+                onClick={onViewResearch}
+                className="text-left p-5 bg-[#0E0E16] border border-white/5 rounded-2xl hover:border-white/10 hover:bg-[#111119] transition-all group"
+              >
+                <span
+                  style={{ color, borderColor: color + '50', background: color + '12' }}
+                  className="text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-widest inline-block mb-3"
+                >
+                  {label}
+                </span>
+                <p className="text-white text-sm font-bold leading-snug mb-2 group-hover:text-blue-300 transition-colors line-clamp-2">
+                  {post.title}
+                </p>
+                {post.seo_meta?.description && (
+                  <p className="text-slate-500 text-xs leading-relaxed line-clamp-2">
+                    {post.seo_meta.description}
+                  </p>
+                )}
+                <div className="mt-3 flex items-center gap-1 text-slate-600 text-[10px] font-bold group-hover:text-blue-500 transition-colors">
+                  <span>Read analysis</span>
+                  <ChevronRight size={10} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-slate-700 text-[10px] mt-5 text-center tracking-wide">
+          Research by Harsimar &lsquo;sam&rsquo; Singh · Updated multiple times daily from BLS, FRED, Eurostat & ILO
+        </p>
+      </div>
+    </section>
+  );
+};
 
 /* ─── FAQ Section ─── */
 const FAQ_ITEMS = [
@@ -662,7 +758,7 @@ const WhoIsThisFor = () => (
 
 
 /* ─── Main Landing Page ─── */
-export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onViewTerms, onViewPrivacy, onViewRefund }) => {
+export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onViewTerms, onViewPrivacy, onViewRefund, onViewResearch }) => {
   const [activePain, setActivePain] = useState(0);
   const [showSticky, setShowSticky] = useState(false);
   const pains = [
@@ -705,6 +801,15 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
               <p className="text-white font-black text-sm tracking-tight">HireMax</p>
             </div>
             <div className="flex items-center gap-3">
+              {onViewResearch && (
+                <button
+                  onClick={onViewResearch}
+                  className="flex items-center gap-1.5 text-slate-400 hover:text-white text-xs font-bold transition-colors mr-3"
+                >
+                  <BookOpen size={14} className="text-blue-400" />
+                  Research Hub
+                </button>
+              )}
               <p className="text-slate-400 text-xs hidden md:block">Free analysis · No credit card</p>
               <button
                 onClick={onGetStarted}
@@ -726,6 +831,15 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
           <span className="text-white font-black text-lg tracking-tight">HireMax</span>
         </div>
         <div className="flex items-center gap-4">
+          {onViewResearch && (
+            <button
+              onClick={onViewResearch}
+              className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm font-bold transition-colors mr-2"
+            >
+              <BookOpen size={16} className="text-blue-400" />
+              Research Hub
+            </button>
+          )}
           <button onClick={onGetStarted} className="text-slate-400 hover:text-white text-sm font-bold transition-colors">Sign In</button>
           <button onClick={onGetStarted} className="bg-white/10 hover:bg-white/20 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors border border-white/10">Get Started</button>
         </div>
@@ -736,10 +850,18 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-blue-600/15 rounded-full blur-[150px] pointer-events-none"/>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="relative z-10">
-          <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-2 mb-10">
-            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-            <p className="text-blue-300 text-xs font-bold tracking-wide">2026 Job Market: 250+ applicants per role at tech companies</p>
-          </div>
+          {onViewResearch && (
+            <button
+              onClick={onViewResearch}
+              className="inline-flex items-center gap-2 bg-white/[0.04] hover:bg-white/[0.07] border border-white/10 hover:border-white/15 rounded-full px-4 py-2 mb-10 group transition-all duration-200"
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <p className="text-slate-400 text-xs font-medium">
+                Live intelligence · Harsimar &lsquo;sam&rsquo; Singh
+              </p>
+              <ArrowRight size={11} className="text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition-all" />
+            </button>
+          )}
 
           <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter text-white max-w-5xl mx-auto leading-[1.05] mb-8">
             You're Being{' '}
@@ -777,6 +899,7 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
       </section>
 
       <TrustIndicators />
+      <LatestResearchTeaser onViewResearch={onViewResearch} />
       <WhoIsThisFor />
       <ProblemSection />
       <ScreeningPipeline />
@@ -884,6 +1007,9 @@ export const LandingPage: React.FC<Props> = ({ onGetStarted, onViewPlans, onView
               <p className="text-white font-bold text-sm mb-4 uppercase tracking-widest">Product</p>
               <div className="space-y-3">
                 <button onClick={onGetStarted} className="block text-slate-400 hover:text-white text-sm transition-colors">Get Started Free</button>
+                {onViewResearch && (
+                  <button onClick={onViewResearch} className="block text-slate-400 hover:text-white text-sm transition-colors text-left">Research Hub</button>
+                )}
                 <button onClick={onViewPlans} className="block text-slate-400 hover:text-white text-sm transition-colors">Pricing</button>
                 <button onClick={onGetStarted} className="block text-slate-400 hover:text-white text-sm transition-colors">Sign In</button>
               </div>

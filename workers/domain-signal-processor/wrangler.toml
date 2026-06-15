@@ -1,0 +1,11 @@
+name = "hiremax-domain-signal-processor"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+ENVIRONMENT = "production"
+# CONTENT_FACTORY_URL = "https://hiremax-intelligence-content-factory.singh-harsimar23.workers.dev"
+
+[[services]]
+binding = "CONTENT_FACTORY"
+service = "hiremax-intelligence-content-factory"

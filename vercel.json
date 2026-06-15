@@ -3,7 +3,27 @@
   "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
-      "source": "/((?!assets/|pdf\\.worker|favicon|robots|sitemap|research-sitemap|llms\\.txt).*)",
+      "source": "/llms.txt",
+      "destination": "https://ssuknybhzcuusjardsve.supabase.co/storage/v1/object/public/public-assets/llms.txt"
+    },
+    {
+      "source": "/research-sitemap.xml",
+      "destination": "https://ssuknybhzcuusjardsve.supabase.co/storage/v1/object/public/public-assets/research-sitemap.xml"
+    },
+    {
+      "source": "/sitemap-research.xml",
+      "destination": "https://ssuknybhzcuusjardsve.supabase.co/storage/v1/object/public/public-assets/research-sitemap.xml"
+    },
+    {
+      "source": "/rss.xml",
+      "destination": "https://hiremax-intelligence-distributor.singh-harsimar23.workers.dev/rss.xml"
+    },
+    {
+      "source": "/feed",
+      "destination": "https://hiremax-intelligence-distributor.singh-harsimar23.workers.dev/rss.xml"
+    },
+    {
+      "source": "/((?!assets/|pdf\\.worker|favicon|robots|sitemap|research-sitemap|llms\\.txt|rss|feed).*)",
       "destination": "/index.html"
     }
   ],

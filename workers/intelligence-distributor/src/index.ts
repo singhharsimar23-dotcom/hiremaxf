@@ -79,7 +79,9 @@ async function requeuePiece(env: Env, pieceId: string, delayHours: number) {
 // ============================================================
 async function publishToBlog(env: Env, piece: any): Promise<void> {
   // Update blog_posts table to published
-  const bp = await supabaseQuery<any[]>(env, `blog_posts?brief_id=eq.${piece.brief_id}&limit=1`);
+  const bp = piece.brief_id 
+    ? await supabaseQuery<any[]>(env, `blog_posts?brief_id=eq.${piece.brief_id}&limit=1`)
+    : await supabaseQuery<any[]>(env, `blog_posts?content_piece_id=eq.${piece.id}&limit=1`);
   if (bp && bp.length > 0) {
     await supabaseQuery(env, `blog_posts?id=eq.${bp[0].id}`, {
       method: 'PATCH',
@@ -94,9 +96,58 @@ async function publishToBlog(env: Env, piece: any): Promise<void> {
     console.log(`[Blog] Published: ${bp[0].slug}`);
     // Update llms.txt in Supabase Storage
     await updateLlmsTxt(env, bp[0].slug, piece.title);
+    // Update research-sitemap.xml in Supabase Storage
+    await updateSitemapXml(env, bp[0].slug);
   }
   await markPublished(env, piece.id);
   await logDistribution(env, piece.id, 'blog', 'success', { slug: piece.slug });
+}
+
+async function updateSitemapXml(env: Env, slug: string): Promise<void> {
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/public/public-assets/research-sitemap.xml`);
+    let current = '';
+    if (res.ok) {
+      current = await res.text();
+    }
+
+    const postUrl = `https://www.hiremax.site/research/${slug}`;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (!current || !current.includes('<urlset')) {
+      current = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${postUrl}</loc>
+    <lastmod>${todayStr}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>`;
+    } else if (!current.includes(postUrl)) {
+      const newUrlBlock = `  <url>
+    <loc>${postUrl}</loc>
+    <lastmod>${todayStr}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>\n</urlset>`;
+      current = current.replace('</urlset>', newUrlBlock);
+    }
+
+    await fetch(`${env.SUPABASE_URL}/storage/v1/object/public-assets/research-sitemap.xml`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        'Content-Type': 'application/xml',
+        'x-upsert': 'true',
+      },
+      body: current,
+    });
+    console.log('[Blog] research-sitemap.xml updated');
+  } catch (e) {
+    console.error('[Blog] research-sitemap.xml update failed:', e);
+  }
 }
 
 async function updateLlmsTxt(env: Env, slug: string, title: string): Promise<void> {
@@ -396,7 +447,7 @@ async function publishToHN(env: Env, piece: any): Promise<void> {
 async function publishDueContent(env: Env, now: Date): Promise<void> {
   const pieces = await supabaseQuery<any[]>(
     env,
-    `content_pieces?status=eq.scheduled&scheduled_for=lte.${now.toISOString()}&order=scheduled_for.asc&limit=5`
+    `content_pieces?status=in.(scheduled,approved)&scheduled_for=lte.${now.toISOString()}&order=scheduled_for.asc&limit=5`
   );
 
   if (!pieces || pieces.length === 0) {
@@ -573,6 +624,215 @@ async function sendWeeklyReport(env: Env): Promise<void> {
 }
 
 // ============================================================
+// RSS FEED GENERATOR
+// ============================================================
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+async function serveRss(env: Env): Promise<Response> {
+  const posts = await supabaseQuery<any[]>(env,
+    'blog_posts?select=slug,title,seo_meta,pillar,published_at&status=eq.published&order=published_at.desc&limit=50'
+  );
+
+  const PILLAR_LABELS: Record<string, string> = {
+    entry_level_collapse: 'Entry-Level Collapse',
+    compensation_reality: 'Compensation Reality',
+    ai_hiring_impact: 'AI Hiring Impact',
+    remote_work_divide: 'Remote Work Divide',
+    skills_velocity: 'Skills Velocity',
+    macro: 'Macro Trends',
+    tech: 'Technology Signal',
+    convergence: 'Convergence Analysis',
+  };
+
+  const items = (posts || []).map((p: any) => {
+    const url = `https://www.hiremax.site/research/${p.slug}`;
+    const desc = escapeXml(p.seo_meta?.description || p.title || '');
+    const title = escapeXml(p.title || '');
+    const category = escapeXml(PILLAR_LABELS[p.pillar] || p.pillar || 'Research');
+    const pubDate = new Date(p.published_at).toUTCString();
+    return `
+    <item>
+      <title>${title}</title>
+      <link>${url}</link>
+      <guid isPermaLink="true">${url}</guid>
+      <description>${desc}</description>
+      <pubDate>${pubDate}</pubDate>
+      <category>${category}</category>
+      <author>research@hiremax.site (Harsimar Singh)</author>
+      <dc:creator>Harsimar Singh</dc:creator>
+    </item>`;
+  }).join('');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>HireMax Intelligence — Labor Market Research by Harsimar Singh</title>
+    <link>https://www.hiremax.site/research</link>
+    <description>Original data-backed research on global labor markets, hiring trends, AI in hiring, and workforce economics. Every finding cites its source. By Harsimar Singh, Founder of HireMax.</description>
+    <language>en-us</language>
+    <copyright>CC BY 4.0 — HireMax Intelligence</copyright>
+    <managingEditor>research@hiremax.site (Harsimar Singh)</managingEditor>
+    <webMaster>research@hiremax.site (Harsimar Singh)</webMaster>
+    <atom:link href="https://www.hiremax.site/rss.xml" rel="self" type="application/rss+xml" />
+    <image>
+      <url>https://www.hiremax.site/favicon.png</url>
+      <title>HireMax Intelligence</title>
+      <link>https://www.hiremax.site/research</link>
+    </image>${items}
+  </channel>
+</rss>`;
+
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/rss+xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
+// ============================================================
+// SITEMAP GENERATOR
+// ============================================================
+async function serveSitemap(env: Env): Promise<Response> {
+  const posts = await supabaseQuery<any[]>(env,
+    'blog_posts?select=slug,published_at&status=eq.published&order=published_at.desc&limit=500'
+  );
+
+  const urls = (posts || []).map((p: any) => {
+    const lastmod = new Date(p.published_at).toISOString().split('T')[0];
+    return `  <url>
+    <loc>https://www.hiremax.site/research/${p.slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>`;
+  }).join('\n');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://www.hiremax.site/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://www.hiremax.site/research</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+${urls}
+</urlset>`;
+
+  return new Response(xml, {
+    headers: {
+      'Content-Type': 'application/xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
+// ============================================================
+// NEWSLETTER SUBSCRIPTION ENDPOINT
+// ============================================================
+async function handleSubscribe(request: Request, env: Env): Promise<Response> {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  let email: string;
+  try {
+    const body = await request.json() as { email?: string; honeypot?: string };
+    email = (body.email || '').trim().toLowerCase();
+    // Honeypot check — bots fill this field
+    if (body.honeypot) {
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid body' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  if (!email || !email.includes('@') || email.length < 5) {
+    return new Response(JSON.stringify({ error: 'Invalid email' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  // Upsert to Supabase (ignore duplicate)
+  try {
+    const res = await fetch(`${env.SUPABASE_URL}/rest/v1/newsletter_subscribers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        Prefer: 'resolution=ignore-duplicates,return=minimal',
+      },
+      body: JSON.stringify({ email, source: 'research_hub', subscribed_at: new Date().toISOString() }),
+    });
+
+    if (!res.ok && res.status !== 409) {
+      const err = await res.text();
+      console.error('[Newsletter] Supabase insert error:', err);
+      return new Response(JSON.stringify({ error: 'Failed to subscribe' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+  } catch (err) {
+    console.error('[Newsletter] Supabase error:', err);
+    return new Response(JSON.stringify({ error: 'Server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
+  // Send welcome email via Resend
+  if (env.RESEND_API_KEY) {
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: 'Harsimar Singh · HireMax Intelligence <research@hiremax.site>',
+          to: [email],
+          subject: "You're on the list — HireMax Intelligence Brief",
+          html: `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#080810;color:#e2e8f0;margin:0;padding:32px;">
+<div style="max-width:560px;margin:0 auto;">
+  <p style="color:#3B82F6;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;">HireMax Intelligence</p>
+  <h1 style="color:#fff;font-size:24px;font-weight:900;margin:0 0 12px;">You're on the list.</h1>
+  <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 20px;">Every Friday I send one brief — the most signal-dense labor market findings from the week. No noise. No opinion. Just data that matters.</p>
+  <p style="color:#94a3b8;font-size:15px;line-height:1.6;margin:0 0 24px;">In the meantime, read the latest research:</p>
+  <a href="https://www.hiremax.site/research" style="display:inline-block;background:#3B82F6;color:#fff;font-weight:700;text-decoration:none;padding:12px 24px;border-radius:10px;font-size:14px;">Browse Research Hub →</a>
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:32px 0;"/>
+  <p style="color:#475569;font-size:12px;margin:0;">— Harsimar Singh, Founder · HireMax<br/>Unsubscribe anytime by replying with "unsubscribe".</p>
+</div></body></html>`,
+        }),
+      });
+    } catch (err) {
+      console.error('[Newsletter] Resend error (non-fatal):', err);
+    }
+  }
+
+  return new Response(JSON.stringify({ ok: true }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// ============================================================
 // MAIN CRON HANDLER
 // ============================================================
 export default {
@@ -591,17 +851,33 @@ export default {
     }
   },
 
-  // HTTP handler for testing
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
-    if (url.pathname === '/trigger-distribute' && request.method === 'POST') {
+    const { pathname } = url;
+
+    // RSS feed — for AI crawlers (Perplexity, ChatGPT, news aggregators)
+    if (pathname === '/rss.xml' || pathname === '/rss' || pathname === '/feed') {
+      return serveRss(env);
+    }
+
+    // Sitemap — for Google/Bing indexing
+    if (pathname === '/sitemap.xml' || pathname === '/sitemap') {
+      return serveSitemap(env);
+    }
+
+    // Newsletter subscription
+    if (pathname === '/subscribe') {
+      return handleSubscribe(request, env);
+    }
+
+    if (pathname === '/trigger-distribute' && request.method === 'POST') {
       ctx.waitUntil(publishDueContent(env, new Date()));
       return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
     }
-    if (url.pathname === '/trigger-report' && request.method === 'POST') {
+    if (pathname === '/trigger-report' && request.method === 'POST') {
       ctx.waitUntil(sendWeeklyReport(env));
       return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
     }
-    return new Response('HireMax Distributor — POST /trigger-distribute or /trigger-report', { status: 200 });
+    return new Response('HireMax Distributor — RSS: GET /rss.xml | Sitemap: GET /sitemap.xml | Subscribe: POST /subscribe', { status: 200 });
   },
 };
