@@ -75,7 +75,7 @@ const NavLink: React.FC<{
       onMouseEnter={handlePrefetch}
       onFocus={handlePrefetch}
       onTouchStart={handlePrefetch} // fires ~100ms before tap resolves on mobile
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 font-bold text-sm whitespace-nowrap relative group ${
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 font-bold text-[13px] whitespace-nowrap relative group ${
         active
           ? 'text-white bg-white/5'
           : isFlagship
@@ -133,19 +133,19 @@ const Header: React.FC<HeaderProps> = ({ currentView, setView, plan, onNewResume
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-20 bg-[#0F1117] border-b border-[#2D313D] px-8 flex items-center justify-between z-[100] shadow-xl">
-      <div className="flex items-center gap-6 lg:gap-8">
+    <header className="fixed top-0 left-0 right-0 h-16 bg-[#0F1117] border-b border-[#2D313D] px-4 flex items-center justify-between z-[100] shadow-xl">
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         <div
-          className="flex items-center gap-3 cursor-pointer group shrink-0"
+          className="flex items-center gap-2.5 cursor-pointer group shrink-0 mr-2"
           onClick={() => setView('dashboard')}
         >
-          <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 border border-[#2D313D] bg-[#0E1118]">
+          <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shadow-lg transition-transform group-hover:scale-105 border border-[#2D313D] bg-[#0E1118]">
             <img src="/favicon.png" alt="HireMax Logo" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-white font-extrabold text-xl tracking-tight hidden sm:block">HireMax</h1>
+          <h1 className="text-white font-extrabold text-lg tracking-tight hidden sm:block shrink-0">HireMax</h1>
         </div>
 
-        <nav className="hidden lg:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           <NavLink
             label="Dashboard"
             active={currentView === 'dashboard'}

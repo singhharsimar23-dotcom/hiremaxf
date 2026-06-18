@@ -360,13 +360,16 @@ const NewsletterSignup: React.FC = () => {
       const res = await fetch(`${distributorUrl}/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({ email: trimmed, source: 'research_hub' }),
       });
       if (res.ok) { setStatus('success'); return; }
       // Fallback: direct Supabase insert
       const { error } = await supabase
         .from('newsletter_subscribers')
-        .upsert({ email: trimmed, subscribed_at: new Date().toISOString() }, { onConflict: 'email', ignoreDuplicates: true });
+        .upsert(
+          { email: trimmed, source: 'research_hub', subscribed_at: new Date().toISOString() },
+          { onConflict: 'email', ignoreDuplicates: true }
+        );
       if (error && !error.message?.toLowerCase().includes('duplicate')) throw error;
       setStatus('success');
     } catch {

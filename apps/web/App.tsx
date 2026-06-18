@@ -857,7 +857,7 @@ function App() {
                 </button>
             )}
 
-            <main className={"flex-1 flex flex-col " + (showNav ? 'pt-20' : '')}>
+            <main className={"flex-1 flex flex-col " + (showNav ? 'pt-16' : '')}>
                 <ErrorBoundary name="Core Engine">
                     <div className="flex-1 overflow-y-auto">
                     <Suspense fallback={

@@ -208,7 +208,7 @@ function renderMarkdown(md: string): string {
     .replace(/^\d+\. (.+)$/gm, '<li class="text-slate-300 leading-relaxed ml-4 mb-1" style="list-style-type:decimal;display:list-item;margin-left:1.5rem">$1</li>')
     // Unordered list items
     .replace(/^[-*] (.+)$/gm, '<li class="text-slate-300 leading-relaxed mb-1.5 flex gap-2"><span class="text-blue-400 mt-1 shrink-0">▸</span><span>$1</span></li>')
-    // Key Data Points section — special grid
+    // Key Data Points section — vertical card list (no horizontal grid that breaks layout)
     .replace(
       /## Key Data Points\n([\s\S]+?)(?=\n##|$)/,
       (_, content) => {
@@ -217,17 +217,18 @@ function renderMarkdown(md: string): string {
           <h2 class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-5 flex items-center gap-2">
             <span class="text-base">📊</span> Key Data Points
           </h2>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="flex flex-col gap-2.5">
             ${lines.map((l: string) => {
               const clean = l.replace(/^[-*\d.] /, '').trim();
               const parts = clean.match(/^(.+?)\s*\((.+)\)$/);
               if (parts) {
-                return `<div class="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3">
-                  <p class="text-white text-sm font-bold leading-snug">${parts[1].trim()}</p>
-                  <p class="text-slate-600 text-[9px] font-bold uppercase tracking-wider mt-1">${parts[2].trim()}</p>
+                return `<div class="bg-white/[0.04] border border-white/[0.06] rounded-xl px-4 py-3 flex items-start gap-3">
+                  <span class="text-blue-400 mt-0.5 shrink-0 text-sm">▸</span>
+                  <div><p class="text-white text-sm font-bold leading-snug">${parts[1].trim()}</p>
+                  <p class="text-slate-500 text-[10px] font-bold uppercase tracking-wider mt-0.5">${parts[2].trim()}</p></div>
                 </div>`;
               }
-              return `<div class="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3"><p class="text-slate-300 text-sm leading-relaxed">${clean}</p></div>`;
+              return `<div class="bg-white/[0.04] border border-white/[0.06] rounded-xl px-4 py-3 flex items-start gap-3"><span class="text-blue-400 mt-0.5 shrink-0 text-sm">▸</span><p class="text-slate-300 text-sm leading-relaxed">${clean}</p></div>`;
             }).join('')}
           </div>
         </div>`;
@@ -237,7 +238,6 @@ function renderMarkdown(md: string): string {
     .replace(
       /## FAQ\n([\s\S]+?)(?=\n##|$)/i,
       (_, content) => {
-        // Try to extract H3/bold Q&A pairs
         const qaPairs: Array<{q: string; a: string}> = [];
         const pattern = /###? (.+?)\n+([\s\S]+?)(?=###? |$)/g;
         let match;
