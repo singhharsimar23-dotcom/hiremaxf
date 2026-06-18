@@ -14,6 +14,7 @@ interface BlogPost {
   faq_pairs: Array<{ question: string; answer: string }>;
   published_at: string;
   brief_id: string;
+  cover_image_url?: string;
 }
 
 const PILLAR_LABELS: Record<string, { label: string; color: string }> = {
@@ -27,18 +28,53 @@ const PILLAR_LABELS: Record<string, { label: string; color: string }> = {
   convergence: { label: 'Convergence Analysis', color: '#F59E0B' },
 };
 
-function getPillarImage(pillar: string): string {
-  const images: Record<string, string> = {
-    entry_level_collapse: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=1200&h=600&q=80',
-    compensation_reality: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=1200&h=600&q=80',
-    ai_hiring_impact: 'https://images.unsplash.com/photo-1677442136019-21780efad99a?auto=format&fit=crop&w=1200&h=600&q=80',
-    remote_work_divide: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=1200&h=600&q=80',
-    skills_velocity: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&h=600&q=80',
-    macro: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1200&h=600&q=80',
-    tech: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&h=600&q=80',
-    convergence: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&h=600&q=80',
-  };
-  return images[pillar] || 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&h=600&q=80';
+// Topic-specific images by slug keyword — covers industry-specific articles
+const TOPIC_IMAGES: Array<[string, string]> = [
+  ['freight',      'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['truck',        'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['logistics',    'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['supply-chain', 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['accounting',   'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['finance',      'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['banking',      'https://images.unsplash.com/photo-1501167786227-4cba60f6d58f?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['healthcare',   'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['nurse',        'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['software',     'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['engineer',     'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['developer',    'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['marketing',    'https://images.unsplash.com/photo-1533750516457-a7f992034fec?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['sales',        'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['remote',       'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['manufacturing','https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['retail',       'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['construction', 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['legal',        'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['law',          'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['education',    'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['teacher',      'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['data',         'https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?auto=format&fit=crop&w=1200&h=600&q=80'],
+  ['analyst',      'https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?auto=format&fit=crop&w=1200&h=600&q=80'],
+];
+
+const PILLAR_IMAGES: Record<string, string> = {
+  entry_level_collapse: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=1200&h=600&q=80',
+  compensation_reality: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=1200&h=600&q=80',
+  ai_hiring_impact:     'https://images.unsplash.com/photo-1677442136019-21780efad99a?auto=format&fit=crop&w=1200&h=600&q=80',
+  remote_work_divide:   'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=1200&h=600&q=80',
+  skills_velocity:      'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&h=600&q=80',
+  macro:                'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1200&h=600&q=80',
+  tech:                 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&h=600&q=80',
+  convergence:          'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&h=600&q=80',
+};
+
+// Priority: DB cover_image_url > topic keyword match > pillar default
+function getArticleImage(post: BlogPost): string {
+  if (post.cover_image_url) return post.cover_image_url;
+  const slug = (post.slug + ' ' + post.title).toLowerCase();
+  for (const [keyword, url] of TOPIC_IMAGES) {
+    if (slug.includes(keyword)) return url;
+  }
+  return PILLAR_IMAGES[post.pillar] || PILLAR_IMAGES.convergence;
 }
 
 // ============================================================
@@ -383,12 +419,13 @@ export const ResearchPostView: React.FC<ResearchPostViewProps> = ({ slug, onBack
       <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 pt-8">
         <div className="w-full h-48 sm:h-64 rounded-2xl overflow-hidden relative border border-white/10">
           <img
-            src={getPillarImage(post.pillar)}
+            src={getArticleImage(post)}
             alt={post.title}
-            className="w-full h-full object-cover opacity-50"
+            className="w-full h-full object-cover opacity-55"
             loading="eager"
+            onError={(e) => { (e.target as HTMLImageElement).src = PILLAR_IMAGES[post.pillar] || PILLAR_IMAGES.convergence; }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0A0B10] via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0A0B10] via-[#0A0B10]/20 to-transparent" />
         </div>
       </div>
 
@@ -396,7 +433,7 @@ export const ResearchPostView: React.FC<ResearchPostViewProps> = ({ slug, onBack
       <article className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
 
         {/* Pillar + meta */}
-        <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           {pillarMeta && (
             <span
               style={{ background: pillarMeta.color + '20', color: pillarMeta.color, borderColor: pillarMeta.color + '40' }}
@@ -410,14 +447,32 @@ export const ResearchPostView: React.FC<ResearchPostViewProps> = ({ slug, onBack
           </span>
           <span className="text-slate-600 text-xs">·</span>
           <span className="text-slate-500 text-xs">{readMins} min read</span>
-          <span className="text-slate-600 text-xs">·</span>
-          <span className="text-slate-500 text-xs">Harsimar Singh · HireMax Research</span>
         </div>
 
         {/* Title */}
-        <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight tracking-tight mb-6">
+        <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight tracking-tight mb-5">
           {post.title}
         </h1>
+
+        {/* Author block */}
+        <div className="flex items-center gap-3 mb-8 pb-6 border-b border-white/[0.06]">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shrink-0 text-white font-black text-sm">
+            H
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-white text-sm font-bold leading-none mb-0.5">Harsimar 'sam' Singh</p>
+            <p className="text-slate-500 text-xs">Founder · HireMax Research · Labor Market Intelligence</p>
+          </div>
+          <a
+            href="https://www.linkedin.com/in/singhharsimar23/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 hover:border-blue-500/40 text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0"
+          >
+            <Linkedin size={11} />
+            Connect
+          </a>
+        </div>
 
         {/* Data sources */}
         <div className="bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3 mb-8 flex flex-wrap gap-2 items-center">
